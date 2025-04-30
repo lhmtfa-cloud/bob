@@ -20,7 +20,10 @@ proxies = {
 
 async def upload_pdf(file):
     # Save uploaded file temporarily
-    temp_dir = Path("./data/tmp")
+    temp_dir = Path("./data/uploads")
+    #print("___________________________________________________________________________________________________________________________________")
+    #print(temp_dir)
+    #print("___________________________________________________________________________________________________________________________________")
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / file.filename
 
