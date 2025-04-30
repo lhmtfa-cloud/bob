@@ -1,0 +1,12 @@
+services:
+  fastapi-pdf:
+    build: .
+    container_name: fastapi_pdf_service
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/summaries:/app/data/summaries
+    ports:
+      - "8000:8000"
+    environment:
+      - UPLOAD_DIR=/app/data/uploads
+      - SUMMARY_DIR=/app/data/summaries
