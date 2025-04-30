@@ -17,6 +17,9 @@ PROXY_USER=usuario
 PROXY_PASS=senha
 PROXY_HOST=proxy01.seti.parana
 PROXY_PORT=8080
+```
+
+ - Para executar o projeto rodar
 
 ```bash
 docker-compose up --build
