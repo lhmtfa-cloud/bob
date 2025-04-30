@@ -10,3 +10,5 @@ services:
     environment:
       - UPLOAD_DIR=/app/data/uploads
       - SUMMARY_DIR=/app/data/summaries
+    env_file:
+      - .env
