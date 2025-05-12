@@ -23,19 +23,30 @@ class PDFGenerator:
 
         return caminho_pdf
 
-    def _extrair_tabela(self, texto: str) -> list[str]:
-        linhas_tabela = []
+    def _extrair_tabela(self, texto: str) -> list[list[str]]:
+        tabelas = []
+        tabela_atual = []
         capturando = False
+
         for linha in texto.splitlines():
             linha = linha.strip()
+
             if linha.startswith("|") and not linha.startswith("|--"):
                 capturando = True
-                linhas_tabela.append(linha)
+                tabela_atual.append(linha)
             elif capturando and linha.startswith("|--"):
                 continue
             elif capturando and not linha.startswith("|"):
-                break  # fim da tabela
-        return linhas_tabela
+                if tabela_atual:
+                    tabelas.append(tabela_atual)
+                    tabela_atual = []
+                capturando = False
+
+        if tabela_atual:
+            tabelas.append(tabela_atual)
+
+        # Junta todas as tabelas em uma só (opcional, dependendo do seu objetivo)
+        return [linha for tabela in tabelas for linha in tabela]
 
     def _processar_tabela(self, linhas_tabela: list[str]) -> list[list[str]]:
         tabela = []
@@ -56,7 +67,7 @@ class PDFGenerator:
             col_width = 190 / num_cols
             col_widths = [col_width] * num_cols
 
-        for linha in tabela:
+        for idx_linha, linha in enumerate(tabela):
             while len(linha) < len(col_widths):
                 linha.append("")
 
@@ -79,23 +90,28 @@ class PDFGenerator:
                 y = y_inicial
 
                 pdf.set_xy(x, y)
+                conteudo = texto[2:-2].strip() if texto.startswith("**") and texto.endswith("**") else texto.strip()
 
-                if texto.startswith("**") and texto.endswith("**") and len(texto) > 4:
-                    conteudo = texto[2:-2].strip()
-                    pdf.set_font("Helvetica", style="B", size=10)
-                    linhas_texto = math.ceil(pdf.get_string_width(conteudo) / largura)
-                    altura_texto = linhas_texto * line_height
-                    y_offset = (altura_total - altura_texto) / 2
-                    pdf.set_xy(x, y + y_offset)
-                    pdf.multi_cell(w=largura, h=line_height, border=0, align='C', txt=conteudo)
-                    pdf.set_font("Helvetica", style="", size=10)
-                else:
-                    pdf.multi_cell(w=largura, h=line_height, border=0, txt=texto)
+                # Calcula altura do texto atual
+                texto_largura = pdf.get_string_width(conteudo)
+                linhas_texto = max(1, math.ceil(texto_largura / largura))
+                altura_texto = linhas_texto * line_height
+                y_offset = (altura_total - altura_texto) / 2
 
+                # Decide se centraliza vertical e horizontal
+                align = 'C' if idx_linha == 0 or i == 0 else 'L'
+                estilo = "B" if idx_linha == 0 else ""
+                pdf.set_font("Helvetica", style=estilo, size=10)
 
+                pdf.set_xy(x, y + y_offset)
+                pdf.multi_cell(w=largura, h=line_height, border=0, align=align, txt=conteudo)
+
+                pdf.set_font("Helvetica", style="", size=10)
                 pdf.rect(x, y_inicial, largura, altura_total)
 
             pdf.set_xy(x_inicial, y_inicial + altura_total)
-        
+
         pdf.output(caminho_pdf)
+
+
 
