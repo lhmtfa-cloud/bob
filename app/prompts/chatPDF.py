@@ -11,10 +11,10 @@ Destinatário: [nome ou entidade]
 }
 {
 página: [número da página]
+resumo da página: [texto resumido do conteudo da página]
 quem assinou: [nomes ou “ninguém”]
 leis: [leis citadas ou “nenhuma”]
 órgãos envolvidos: [nomes de órgãos públicos ou entidades]
-resumo da página: [texto resumido]
 data: [datas mencionadas]
 cálculo: [valores mencionados, exemplo: “gasto previsto de R$10.000,00”]
 }
@@ -65,4 +65,7 @@ cálculo: ...
 }
 
 >faça para *TODAS* as páginas
+
+
+>lembrete final, faça para TODAS as páginas
 """
