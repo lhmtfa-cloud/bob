@@ -1,8 +1,19 @@
-from fpdf import FPDF
-import math
 import re
 import os
 import uuid
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+
+FONT_FAMILY = 'Times'
+FONT_FAMILY_BOLD = 'Helvetica-Bold'
+
 
 class PDFGenerator:
     def __init__(self, output_dir="output_pdfs"):
@@ -10,108 +21,213 @@ class PDFGenerator:
         os.makedirs(self.output_dir, exist_ok=True)
 
     async def create_summary_pdf(self, structured_summary: str) -> str:
-        # Extrai a tabela do texto usando regex
+        os.makedirs(self.output_dir, exist_ok=True)
         tabela_raw = self._extrair_tabela(structured_summary)
-
-        # Processa a tabela
-        tabela = self._processar_tabela(tabela_raw)
-
-        # Gera o PDF
+        tabela_processada = self._processar_tabela(tabela_raw)
+        
         nome_arquivo = f"{uuid.uuid4().hex}.pdf"
         caminho_pdf = os.path.join(self.output_dir, nome_arquivo)
-        self._gerar_pdf(tabela, caminho_pdf)
+        
+        try:
+            self._gerar_pdf_reportlab(tabela_processada, caminho_pdf)
+            return caminho_pdf
+        except Exception as e:
+            print(f"Erro ao gerar PDF com ReportLab: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
-        return caminho_pdf
-
-    def _extrair_tabela(self, texto: str) -> list[list[str]]:
-        tabelas = []
-        tabela_atual = []
+    def _extrair_tabela(self, texto: str) -> list[str]:
+        linhas_tabela = []
         capturando = False
-
         for linha in texto.splitlines():
             linha = linha.strip()
-
             if linha.startswith("|") and not linha.startswith("|--"):
                 capturando = True
-                tabela_atual.append(linha)
+                linhas_tabela.append(linha)
             elif capturando and linha.startswith("|--"):
                 continue
             elif capturando and not linha.startswith("|"):
-                if tabela_atual:
-                    tabelas.append(tabela_atual)
-                    tabela_atual = []
-                capturando = False
-
-        if tabela_atual:
-            tabelas.append(tabela_atual)
-
-        # Junta todas as tabelas em uma só (opcional, dependendo do seu objetivo)
-        return [linha for tabela in tabelas for linha in tabela]
+                break
+        return linhas_tabela
 
     def _processar_tabela(self, linhas_tabela: list[str]) -> list[list[str]]:
         tabela = []
-        for linha in linhas_tabela:
-            partes = [parte.strip() for parte in linha.strip('|').split('|')]
-            tabela.append(partes)
+        for linha_raw in linhas_tabela:
+            celulas_raw = [celula.strip() for celula in linha_raw.strip().strip('|').split('|')]
+            celulas_processadas = [
+                re.sub(r'\s+', ' ', celula.replace("<br>", " ").replace("\\n", " ")).strip()
+                for celula in celulas_raw
+            ]
+            tabela.append(celulas_processadas)
         return tabela
 
-    def _gerar_pdf(self, tabela: list[list[str]], caminho_pdf: str):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_font("Helvetica", size=10)
+    def _determine_reportlab_style(self, text_content, is_header, is_item_col, is_details_header_col, base_style):
+        text_to_draw = str(text_content)
+        current_style = ParagraphStyle(name=f'Style_{uuid.uuid4().hex}', parent=base_style)
+        current_style.fontName = FONT_FAMILY 
+        current_style.alignment = base_style.alignment 
 
-        line_height = 8
-        if tabela:
-            num_cols = max(len(linha) for linha in tabela)
-            col_width = 190 / num_cols
-            col_widths = [col_width] * num_cols
+        is_markdown = False
+        if text_to_draw.startswith("**") and text_to_draw.endswith("**") and len(text_to_draw) > 4:
+            text_to_draw = text_to_draw[2:-2].strip()
+            is_markdown = True
 
-        for idx_linha, linha in enumerate(tabela):
-            while len(linha) < len(col_widths):
-                linha.append("")
+        content_lower = text_to_draw.lower()
 
-            n_linhas_por_celula = []
-            for i, texto in enumerate(linha):
-                largura = col_widths[i]
-                texto_limpo = texto[2:-2] if texto.startswith("**") and texto.endswith("**") else texto
-                n_linhas = max(1, math.ceil(pdf.get_string_width(texto_limpo) / largura))
-                n_linhas_por_celula.append(n_linhas)
+        if is_header:
+            if is_item_col and content_lower == "item":
+                current_style.fontName = FONT_FAMILY_BOLD
+                current_style.alignment = TA_CENTER
+            elif is_details_header_col and content_lower == "detalhes":
+                current_style.fontName = FONT_FAMILY_BOLD
+                current_style.alignment = TA_CENTER
+        elif is_item_col:
+            current_style.fontName = FONT_FAMILY_BOLD
+            current_style.alignment = TA_CENTER
+        
+        if is_markdown:
+            current_style.fontName = FONT_FAMILY_BOLD
+            if current_style.alignment == TA_LEFT:
+                current_style.alignment = TA_CENTER
+        
+        return text_to_draw, current_style
 
-            max_linhas = max(n_linhas_por_celula)
-            altura_total = max_linhas * line_height
+    def _gerar_pdf_reportlab(self, tabela_processada: list[list[str]], caminho_pdf: str):
+        doc = SimpleDocTemplate(caminho_pdf, pagesize=A4,
+                                leftMargin=15*mm, rightMargin=15*mm,
+                                topMargin=15*mm, bottomMargin=15*mm)
+        elements = []
+        
+        styles = getSampleStyleSheet()
+        base_paragraph_style = styles['Normal']
+        base_paragraph_style.fontName = FONT_FAMILY 
+        base_paragraph_style.fontSize = 12
+        base_paragraph_style.leading = 12 * 1.5 # Espaçamento de 1.5
 
-            x_inicial = pdf.get_x()
-            y_inicial = pdf.get_y()
+        if not tabela_processada: doc.build(elements); return
+        
+        num_cols = 0
+        if any(isinstance(row, list) for row in tabela_processada):
+            valid_rows = [r for r in tabela_processada if isinstance(r, list) and r]
+            if valid_rows: num_cols = max(len(r) for r in valid_rows)
+            elif tabela_processada and isinstance(tabela_processada[0], list): num_cols = len(tabela_processada[0])
+        if num_cols == 0: doc.build(elements); return
 
-            for i, texto in enumerate(linha):
-                largura = col_widths[i]
-                x = x_inicial + sum(col_widths[:i])
-                y = y_inicial
+        item_column_index = -1; details_column_index = -1
+        if tabela_processada and tabela_processada[0]:
+            header_cleaned = [str(h).strip().lower() for h in tabela_processada[0]]
+            if "item" in header_cleaned: item_column_index = header_cleaned.index("item")
+            if "detalhes" in header_cleaned: details_column_index = header_cleaned.index("detalhes")
+        
+        if num_cols == 2 and item_column_index == -1 and details_column_index == -1:
+            item_column_index = 0; details_column_index = 1
+        
+        available_width_for_table = doc.width
+        if num_cols == 1: col_widths_rl = [available_width_for_table]
+        elif num_cols == 2: col_widths_rl = [available_width_for_table * 0.25, available_width_for_table * 0.75]
+        elif num_cols == 3 and item_column_index != -1 and details_column_index != -1:
+            col_widths_rl = [available_width_for_table * 0.20, available_width_for_table * 0.60, available_width_for_table * 0.20]
+        else: col_widths_rl = [available_width_for_table / num_cols] * num_cols
+        
+        data_for_rl_table = []
+        
+        WORDS_PER_DETAILS_CHUNK = 70 # Ajuste este valor! Fonte maior, menos palavras cabem.
+                                     # Aumente para menos repetições do "item".
+                                     # Diminua para mais repetições.
 
-                pdf.set_xy(x, y)
-                conteudo = texto[2:-2].strip() if texto.startswith("**") and texto.endswith("**") else texto.strip()
+        for row_idx, original_row in enumerate(tabela_processada):
+            is_header_row = (row_idx == 0)
+            
+            current_row_cells = list(original_row)
+            while len(current_row_cells) < num_cols: current_row_cells.append("")
+            current_row_cells = current_row_cells[:num_cols]
 
-                # Calcula altura do texto atual
-                texto_largura = pdf.get_string_width(conteudo)
-                linhas_texto = max(1, math.ceil(texto_largura / largura))
-                altura_texto = linhas_texto * line_height
-                y_offset = (altura_total - altura_texto) / 2
+            current_item_text = str(current_row_cells[item_column_index]) if item_column_index != -1 and item_column_index < len(current_row_cells) else ""
+            
+            item_text_to_draw, item_style = self._determine_reportlab_style(
+                current_item_text, is_header_row, True, False, base_paragraph_style
+            )
+            item_paragraph_obj = Paragraph(item_text_to_draw, item_style)
 
-                # Decide se centraliza vertical e horizontal
-                align = 'C' if idx_linha == 0 or i == 0 else 'L'
-                estilo = "B" if idx_linha == 0 else ""
-                pdf.set_font("Helvetica", style=estilo, size=10)
+            current_details_text = ""
+            if details_column_index != -1 and details_column_index < len(current_row_cells):
+                current_details_text = str(current_row_cells[details_column_index])
 
-                pdf.set_xy(x, y + y_offset)
-                pdf.multi_cell(w=largura, h=line_height, border=0, align=align, txt=conteudo)
+            if details_column_index != -1 and current_details_text.strip() and not is_header_row :
+                words_in_details_list = current_details_text.split(' ')
+                first_chunk_this_logical_row = True
+                start_word_index = 0
+                while start_word_index < len(words_in_details_list):
+                    end_word_index = min(start_word_index + WORDS_PER_DETAILS_CHUNK, len(words_in_details_list))
+                    actual_chunk_text = " ".join(words_in_details_list[start_word_index:end_word_index])
+                    
+                    _, details_style = self._determine_reportlab_style(actual_chunk_text, False, False, False, base_paragraph_style)
+                    details_paragraph = Paragraph(actual_chunk_text, details_style)
+                    
+                    rl_row_segment = [None] * num_cols
+                    if item_column_index != -1: rl_row_segment[item_column_index] = item_paragraph_obj
+                    if details_column_index != -1: rl_row_segment[details_column_index] = details_paragraph
+                    
+                    if first_chunk_this_logical_row:
+                        for c_idx in range(num_cols):
+                            if c_idx != item_column_index and c_idx != details_column_index:
+                                cell_text_other = str(current_row_cells[c_idx])
+                                text_other_draw, style_other = self._determine_reportlab_style(cell_text_other, is_header_row, False, False, base_paragraph_style)
+                                rl_row_segment[c_idx] = Paragraph(text_other_draw, style_other)
+                    else:
+                        for c_idx in range(num_cols):
+                            if c_idx != item_column_index and c_idx != details_column_index:
+                                 _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
+                                 rl_row_segment[c_idx] = Paragraph("", style_empty)
+                    
+                    for c_idx in range(num_cols):
+                        if rl_row_segment[c_idx] is None:
+                            _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
+                            rl_row_segment[c_idx] = Paragraph("", style_empty)
+                    data_for_rl_table.append(rl_row_segment)
+                    
+                    start_word_index = end_word_index
+                    first_chunk_this_logical_row = False
+                    if start_word_index >= len(words_in_details_list): break
+            else:
+                styled_row_cells = [None] * num_cols
+                for c_idx in range(num_cols):
+                    cell_content = str(current_row_cells[c_idx])
+                    is_current_cell_item_col = (c_idx == item_column_index)
+                    is_current_cell_details_header = (is_header_row and c_idx == details_column_index)
 
-                pdf.set_font("Helvetica", style="", size=10)
-                pdf.rect(x, y_inicial, largura, altura_total)
+                    text_to_draw, cell_style_obj = self._determine_reportlab_style(
+                        cell_content, is_header_row, 
+                        is_current_cell_item_col, 
+                        is_current_cell_details_header,
+                        base_paragraph_style
+                    )
+                    styled_row_cells[c_idx] = Paragraph(text_to_draw, cell_style_obj)
+                
+                for c_idx in range(num_cols):
+                    if styled_row_cells[c_idx] is None:
+                        _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
+                        styled_row_cells[c_idx] = Paragraph("", style_empty)
+                data_for_rl_table.append(styled_row_cells)
 
-            pdf.set_xy(x_inicial, y_inicial + altura_total)
+        if not data_for_rl_table: doc.build(elements); return
 
-        pdf.output(caminho_pdf)
-
-
-
+        table_obj = Table(data_for_rl_table, colWidths=col_widths_rl, 
+                          repeatRows=(1 if is_header_row and len(tabela_processada) > 0 and \
+                                      len(data_for_rl_table) > 0 and \
+                                      len(data_for_rl_table[0]) == num_cols and \
+                                      row_idx == 0 else 0) # Só repete cabeçalho se a primeira linha lógica era de fato um cabeçalho.
+                         )
+        
+        table_style_cmds = [
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('LEFTPADDING', (0,0), (-1,-1), 2*mm),
+            ('RIGHTPADDING', (0,0), (-1,-1), 2*mm),
+            ('TOPPADDING', (0,0), (-1,-1), 1*mm),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 1*mm),
+        ]
+        table_obj.setStyle(TableStyle(table_style_cmds))
+        elements.append(table_obj)
+        doc.build(elements)
