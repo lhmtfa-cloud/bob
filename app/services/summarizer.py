@@ -23,7 +23,7 @@ proxies = {
 
 # --- FUNCTIONS ---
 
-async def ask_local_llm(contexto, pergunta):
+def ask_local_llm(contexto, pergunta):
     headers = {
         'Content-Type': 'application/json'
     }
@@ -50,24 +50,12 @@ async def ask_local_llm(contexto, pergunta):
         return None
 
 
-async def generate_summary(extracted_data, doc_id):
-    resumo_mais_recente = extracted_data
-    source_id = doc_id
-
-    if not resumo_mais_recente:
-        return
-
-    contexto = resumo_mais_recente
-    #print(contexto)
-    if not contexto:
+def generate_summary(extracted_data):
+    if not extracted_data:
         return
 
     print(f"Conectado ao modelo local.")
-    
-    # Salva a pergunta e a resposta
-    
 
-    resposta = await ask_local_llm(contexto, pergunta)
-
+    resposta = ask_local_llm(extracted_data, pergunta)
     return resposta
 

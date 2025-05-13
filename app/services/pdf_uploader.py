@@ -132,93 +132,68 @@ def upload_pdf_file_sync(path_to_file_str: str):
         return None
 
 
-async def processar_pdf_em_partes_e_enviar(file: UploadFile):
-    logger.info(f"Iniciando processamento assíncrono para o arquivo: {file.filename}")
-    # Cria pasta temporária para o arquivo original
-    temp_dir = Path("./data/temp_pdfs")
-    temp_dir.mkdir(parents=True, exist_ok=True)
+async def processar_pdf_em_partes_e_enviar_path(file_path_str: str) -> list[str]:
+    logger.info(f"Iniciando processamento assíncrono para o arquivo salvo: {file_path_str}")
 
-    temp_file_path = temp_dir / (file.filename or "uploaded_file.pdf") # Garante um nome de arquivo
-    
-    # Salva o UploadFile de forma assíncrona (se possível, dependendo do tamanho e da implementação do UploadFile)
-    # Para arquivos grandes, considere streaming para o disco em chunks.
-    try:
-        with temp_file_path.open("wb") as f:
-            content = await file.read() # Lê o conteúdo do arquivo enviado
-            f.write(content)
-        logger.info(f"Arquivo {file.filename} salvo temporariamente em {temp_file_path}")
-    except Exception as e:
-        logger.error(f"Erro ao salvar arquivo temporário {file.filename}: {e}", exc_info=True)
-        return [] # Retorna lista vazia em caso de falha ao salvar
+    temp_file_path = Path(file_path_str)
+    if not temp_file_path.exists():
+        logger.error(f"O arquivo {temp_file_path} não existe.")
+        return []
 
     # Define diretório de saída para as partes do PDF
     output_dir_split = Path("./data/split_pdfs")
     output_dir_split.mkdir(parents=True, exist_ok=True)
 
     paginas_por_bloco = 10
-    
     partes_paths_str = []
+
     try:
-        # Executa a divisão do PDF (bloqueante) em um thread separado
-        logger.info(f"Agendando divisão do PDF {temp_file_path} em thread separada.")
+        logger.info(f"Dividindo PDF {temp_file_path} em blocos de {paginas_por_bloco} páginas.")
         partes_paths_str = await asyncio.to_thread(
             dividir_pdf_em_blocos_sync, str(temp_file_path), str(output_dir_split), paginas_por_bloco
         )
     except Exception as e:
-        logger.error(f"Falha ao dividir o PDF no thread executor: {e}", exc_info=True)
-        # Limpeza do arquivo temporário original em caso de falha na divisão
-        if temp_file_path.exists():
-            temp_file_path.unlink()
-            logger.info(f"Arquivo temporário {temp_file_path} removido após falha na divisão.")
+        logger.error(f"Erro ao dividir o PDF: {e}", exc_info=True)
         return []
 
     if not partes_paths_str:
         logger.warning("Nenhuma parte do PDF foi gerada.")
-        # Limpeza do arquivo temporário original se nenhuma parte foi gerada
-        if temp_file_path.exists():
-            temp_file_path.unlink()
-            logger.info(f"Arquivo temporário {temp_file_path} removido pois nenhuma parte foi gerada.")
         return []
 
     source_ids = []
-    # Faz upload de cada parte e coleta os source_ids
-    # Executa cada upload (bloqueante) em um thread separado
     upload_tasks = []
+
     for parte_path_str in partes_paths_str:
         logger.info(f"Agendando upload do arquivo {parte_path_str} em thread separada.")
         upload_tasks.append(
             asyncio.to_thread(upload_pdf_file_sync, parte_path_str)
         )
-    
-    # Aguarda todos os uploads completarem
+
     try:
         results = await asyncio.gather(*upload_tasks, return_exceptions=True)
         for result in results:
             if isinstance(result, Exception):
-                logger.error(f"Erro durante um upload no asyncio.gather: {result}", exc_info=result)
-            elif result: # Se não for None e não for uma exceção
+                logger.error(f"Erro durante upload: {result}", exc_info=True)
+            elif result:
                 source_ids.append(result)
     except Exception as e:
-        logger.error(f"Erro ao executar uploads em paralelo com asyncio.gather: {e}", exc_info=True)
+        logger.error(f"Erro ao executar uploads: {e}", exc_info=True)
 
-
-    # Limpeza dos arquivos temporários (original e partes)
+    # Limpeza dos arquivos (original e partes)
     logger.info("Iniciando limpeza dos arquivos temporários.")
     try:
         if temp_file_path.exists():
             temp_file_path.unlink()
-            logger.info(f"Arquivo temporário original {temp_file_path} removido.")
-        
+            logger.info(f"Arquivo original removido: {temp_file_path}")
         for parte_path_str in partes_paths_str:
-            parte_path_obj = Path(parte_path_str)
-            if parte_path_obj.exists():
-                parte_path_obj.unlink()
-                logger.info(f"Parte do PDF {parte_path_obj} removida.")
-        logger.info("Limpeza de arquivos temporários concluída.")
+            parte_path = Path(parte_path_str)
+            if parte_path.exists():
+                parte_path.unlink()
+                logger.info(f"Parte removida: {parte_path}")
+        logger.info("Limpeza concluída.")
     except Exception as e:
-        logger.error(f"Erro durante a limpeza dos arquivos temporários: {e}", exc_info=True)
+        logger.error(f"Erro durante a limpeza: {e}", exc_info=True)
 
-
-    logger.info(f"Processamento concluído. Source IDs obtidos: {source_ids}")
+    logger.info(f"Processamento finalizado. Source IDs: {source_ids}")
     return source_ids
 

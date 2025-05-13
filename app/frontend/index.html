@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Processador de PDF</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>Enviar PDF para Processamento</h1>
+  <input type="file" id="pdfInput" accept="application/pdf" />
+  <button onclick="uploadPDF()">Enviar</button>
+
+  <div class="progress-container hidden" id="progressSection">
+    <h3>Status de Processamento</h3>
+    <progress id="progressBar" value="0" max="100"></progress>
+    <div id="statusText">Aguardando...</div>
+  </div>
+
+  <div id="downloadContainer" class="hidden">
+    <a id="downloadLink" href="#" download>📦 Baixar Arquivo ZIP</a>
+  </div>
+
+  <script>
+    let trackingCode = "";
+    let statusInterval;
+    const statusMap = {
+      received: { value: 10, text: "Arquivo recebido" },
+      question_answering: { value: 30, text: "Respondendo perguntas..." },
+      summarizing: { value: 60, text: "Gerando resumo..." },
+      generating_pdf: { value: 80, text: "Gerando PDF..." },
+      finished: { value: 100, text: "Processamento finalizado!" },
+      error: { value: 0, text: "Erro no processamento." }
+    };
+
+    async function uploadPDF() {
+      const fileInput = document.getElementById("pdfInput");
+      if (!fileInput.files.length) return alert("Selecione um arquivo PDF");
+
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      document.getElementById("progressSection").classList.remove("hidden");
+      document.getElementById("statusText").textContent = "Enviando...";
+      document.getElementById("progressBar").value = 5;
+
+      try {
+        const response = await fetch("/process-pdf", {
+          method: "POST",
+          body: formData
+        });
+        const data = await response.json();
+        trackingCode = data.tracking_code;
+
+        checkStatusLoop(trackingCode, data.download_url);
+      } catch (error) {
+        document.getElementById("statusText").textContent = "Erro ao enviar o arquivo.";
+      }
+    }
+
+    function checkStatusLoop(code, downloadUrl) {
+      statusInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/processing-status/${code}`);
+          const data = await res.json();
+
+          const status = data.status;
+          const statusInfo = statusMap[status] || { value: 0, text: "Status desconhecido" };
+          document.getElementById("statusText").textContent = statusInfo.text;
+          document.getElementById("progressBar").value = statusInfo.value;
+
+          if (status === "finished") {
+            clearInterval(statusInterval);
+            document.getElementById("downloadLink").href = downloadUrl;
+            document.getElementById("downloadContainer").classList.remove("hidden");
+          }
+
+          if (status === "error") {
+            clearInterval(statusInterval);
+          }
+        } catch {
+          document.getElementById("statusText").textContent = "Erro ao consultar status.";
+          clearInterval(statusInterval);
+        }
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

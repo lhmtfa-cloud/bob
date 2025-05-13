@@ -3,177 +3,177 @@ import tempfile
 import zipfile
 import shutil
 import json
-import re 
+import re
+import uuid
+import asyncio
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.services import pdf_uploader, question_answering, summarizer
 from app.services.pdf_generator import PDFGenerator
+from app.services.state_tracker import (
+    set_processing_state,
+    get_processing_state,
+    ProcessingStage,
+)
+
+router = APIRouter()
+storage_dir = "/tmp/processed_zips"
+os.makedirs(storage_dir, exist_ok=True)
+
 
 def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
-
     blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
     if not blocks:
         return raw_contexto_str
 
     page_offset = 0
-
-    processed_first_document_header = False 
+    processed_first_document_header = False
     adjusted_block_strings = []
 
     for block_str in blocks:
-        modified_block_str = block_str 
+        modified_block_str = block_str
         if "Tipo do documento:" in block_str:
-            if processed_first_document_header: 
+            if processed_first_document_header:
                 page_offset += 10
-            else: 
+            else:
                 processed_first_document_header = True
 
         elif "página:" in block_str:
             match = re.search(r"(página:\s*)(\d+)", modified_block_str)
             if match:
-                prefix = match.group(1) 
-                original_page_num_str = match.group(2) 
+                prefix = match.group(1)
+                original_page_num_str = match.group(2)
                 try:
                     original_page_num = int(original_page_num_str)
                     new_page_num = original_page_num + page_offset
-                    modified_block_str = re.sub(r"(página:\s*)\d+", 
-                                                f"{prefix}{new_page_num}", 
-                                                modified_block_str, 
-                                                count=1)
+                    modified_block_str = re.sub(
+                        r"(página:\s*)\d+", f"{prefix}{new_page_num}", modified_block_str, count=1
+                    )
                 except ValueError:
+                    pass
 
-                    pass 
-        
         adjusted_block_strings.append(modified_block_str)
 
     return "\n\n".join(adjusted_block_strings)
 
 
-router = APIRouter()
+@router.post("/process-pdf", status_code=202)
+async def start_pdf_processing(file: UploadFile = File(...)):
+    code = str(uuid.uuid4())
+    set_processing_state(code, ProcessingStage.RECEIVED)
 
-@router.post("/process-pdf")
-async def process_pdf(file: UploadFile = File(...)):
+    temp_file_path = os.path.join(tempfile.gettempdir(), f"{code}_{file.filename}")
+    with open(temp_file_path, "wb") as f:
+        f.write(await file.read())
 
-    temp_dir_for_zip_contents_manager = None
-    temp_dir_path = None 
-    generated_pdf_path_original = None 
-    zip_file_to_send_path = None 
-    operation_succeeded = False 
+    asyncio.create_task(process_pdf_background(temp_file_path, code))
+
+    return {
+        "message": "Processamento iniciado",
+        "tracking_code": code,
+        "status_url": f"/processing-status/{code}",
+        "download_url": f"/download/{code}",
+    }
+
+
+@router.get("/processing-status/{code}")
+async def get_status(code: str):
+    status = get_processing_state(code)
+    if not status:
+        raise HTTPException(status_code=404, detail="Código não encontrado")
+    return {"code": code, "status": status}
+
+
+@router.get("/download/{code}")
+async def download_zip(code: str):
+    status = get_processing_state(code)
+    if status != ProcessingStage.FINISHED:
+        raise HTTPException(status_code=400, detail="Arquivo ainda não está pronto")
+
+    zip_path = os.path.join(storage_dir, f"{code}.zip")
+    if not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="Arquivo ZIP não encontrado")
+
+    return FileResponse(
+        path=zip_path,
+        filename=f"processed_output_{code}.zip",
+        media_type="application/zip"
+    )
+
+
+async def process_pdf_background(temp_file_path: str, code: str):
+    temp_dir = None
+    generated_pdf_path = None
+    zip_file_path = os.path.join(storage_dir, f"{code}.zip")
 
     try:
-        # Envia as partes do PDF e retorna os IDs
-        doc_ids = await pdf_uploader.processar_pdf_em_partes_e_enviar(file)  
+        doc_ids = await pdf_uploader.processar_pdf_em_partes_e_enviar_path(temp_file_path)
 
+        set_processing_state(code, ProcessingStage.QA_PROCESSING)
         extracted_data_list = []
-        for doc_id in doc_ids:
-            extracted_data = await question_answering.ask_questions(doc_id) 
-            extracted_data_list.append(extracted_data)
-        
+
+        qa_tasks = [
+            asyncio.to_thread(question_answering.ask_questions, doc_id)
+            for doc_id in doc_ids
+        ]
+
+        extracted_data_list = await asyncio.gather(*qa_tasks)
+
         contexto_original = "\n\n".join(extracted_data_list)
-        
         contexto_ajustado = ajustar_numeros_de_pagina(contexto_original)
-        
-        structured_summary = await summarizer.generate_summary(contexto_ajustado, doc_ids)
 
-        # --- Geração de PDF ---
-        try:
-            pdf_generator = PDFGenerator()
-            generated_pdf_path_original = await pdf_generator.create_summary_pdf(structured_summary)
-            if not os.path.exists(generated_pdf_path_original):
-                raise FileNotFoundError("PDFGenerator não criou o arquivo PDF.")
-        except Exception as e:
-            print(f"Erro ao gerar PDF: {e}")
-            if 'structured_summary' in locals(): 
-                print("Resumo estruturado que causou o erro:")
-                try:
-                    if isinstance(structured_summary, (dict, list)):
-                        print(json.dumps(structured_summary, indent=2, ensure_ascii=False))
-                    else:
-                        print(structured_summary)
-                except Exception as print_err:
-                    print(f"(Não foi possível imprimir structured_summary: {print_err})")
-            #raise HTTPException(status_code=500, detail=f"Falha ao gerar resumo em PDF: {str(e)}")
+        set_processing_state(code, ProcessingStage.SUMMARIZING)
+        structured_summary = await asyncio.to_thread(summarizer.generate_summary, contexto_ajustado)
 
-        # --- Preparar arquivos para Zipping em um diretório temporário ---
-        temp_dir_for_zip_contents_manager = tempfile.TemporaryDirectory()
-        temp_dir_path = temp_dir_for_zip_contents_manager.__enter__() 
-        
-        pdf_name_in_zip = "summary.pdf"
-        context_name_in_zip = "context.txt"
-        
-        if isinstance(structured_summary, (dict, list)):
-            summary_name_in_zip = "structured_summary.json"
-        else:
-            summary_name_in_zip = "structured_summary.txt"
+        set_processing_state(code, ProcessingStage.GENERATING_PDF)
+        pdf_generator = PDFGenerator()
+        generated_pdf_path = await pdf_generator.create_summary_pdf(structured_summary)
 
-        path_to_pdf_in_temp_dir = os.path.join(temp_dir_path, pdf_name_in_zip)
-        path_to_context_in_temp_dir = os.path.join(temp_dir_path, context_name_in_zip)
-        path_to_summary_in_temp_dir = os.path.join(temp_dir_path, summary_name_in_zip)
+        if not os.path.exists(generated_pdf_path):
+            raise FileNotFoundError("PDF não foi gerado.")
 
-        shutil.copy(generated_pdf_path_original, path_to_pdf_in_temp_dir)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pdf_name = "summary.pdf"
+            context_name = "context.txt"
+            summary_name = (
+                "structured_summary.json" if isinstance(structured_summary, (dict, list)) else "structured_summary.txt"
+            )
 
-        with open(path_to_context_in_temp_dir, "w", encoding="utf-8") as f_context:
-            f_context.write(contexto_ajustado) 
+            path_to_pdf = os.path.join(temp_dir, pdf_name)
+            path_to_context = os.path.join(temp_dir, context_name)
+            path_to_summary = os.path.join(temp_dir, summary_name)
 
-        with open(path_to_summary_in_temp_dir, "w", encoding="utf-8") as f_summary:
-            if isinstance(structured_summary, (dict, list)):
-                json.dump(structured_summary, f_summary, indent=4, ensure_ascii=False)
-            else:
-                f_summary.write(str(structured_summary))
+            shutil.copy(generated_pdf_path, path_to_pdf)
 
-        # --- Criar o arquivo ZIP ---
-        fd, zip_file_to_send_path = tempfile.mkstemp(suffix=".zip")
-        os.close(fd)  
+            with open(path_to_context, "w", encoding="utf-8") as f:
+                f.write(contexto_ajustado)
 
-        with zipfile.ZipFile(zip_file_to_send_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.write(path_to_pdf_in_temp_dir, arcname=pdf_name_in_zip)
-            zf.write(path_to_context_in_temp_dir, arcname=context_name_in_zip)
-            zf.write(path_to_summary_in_temp_dir, arcname=summary_name_in_zip)
-        
-        operation_succeeded = True 
-        return FileResponse(
-            path=zip_file_to_send_path,
-            filename="processed_output.zip", 
-            media_type="application/zip",
-            background=BackgroundTask(os.remove, zip_file_to_send_path) 
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        error_message = f"Um erro inesperado ocorreu durante o processamento e zipping do arquivo: {str(e)}"
-        print(error_message) 
-        if 'structured_summary' in locals() and "Falha ao gerar resumo em PDF" not in str(e):
-            print("Resumo estruturado no momento do erro:")
-            try:
+            with open(path_to_summary, "w", encoding="utf-8") as f:
                 if isinstance(structured_summary, (dict, list)):
-                    print(json.dumps(structured_summary, indent=2, ensure_ascii=False))
+                    json.dump(structured_summary, f, indent=4, ensure_ascii=False)
                 else:
-                    print(structured_summary)
-            except Exception as print_err:
-                print(f"(Não foi possível imprimir structured_summary: {print_err})")
-        raise HTTPException(status_code=500, detail=error_message)
+                    f.write(str(structured_summary))
+
+            with zipfile.ZipFile(zip_file_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(path_to_pdf, arcname=pdf_name)
+                zf.write(path_to_context, arcname=context_name)
+                zf.write(path_to_summary, arcname=summary_name)
+
+        set_processing_state(code, ProcessingStage.FINISHED)
+
+    except Exception as e:
+        print(f"Erro no processamento de {code}: {e}")
+        set_processing_state(code, ProcessingStage.ERROR)
+
     finally:
-        # --- Limpeza ---
-        if temp_dir_for_zip_contents_manager:
+        try:
+            os.remove(temp_file_path)
+        except Exception:
+            pass
+        if generated_pdf_path and os.path.exists(generated_pdf_path):
             try:
-                temp_dir_for_zip_contents_manager.__exit__(None, None, None) 
-            except Exception as e_temp_dir:
-                print(f"Erro ao limpar diretório temporário '{temp_dir_path}': {e_temp_dir}")
-
-        if generated_pdf_path_original and os.path.exists(generated_pdf_path_original):
-            try:
-                os.remove(generated_pdf_path_original)
-            except OSError as e_remove_pdf:
-                print(f"Aviso: Não foi possível limpar o PDF original '{generated_pdf_path_original}': {e_remove_pdf}")
-
-        if not operation_succeeded and zip_file_to_send_path and os.path.exists(zip_file_to_send_path):
-            try:
-                os.remove(zip_file_to_send_path)
-                print(f"Arquivo zip intermediário limpo devido a erro: {zip_file_to_send_path}")
-            except OSError as e_remove_zip:
-                print(f"Aviso: Não foi possível limpar o arquivo zip intermediário '{zip_file_to_send_path}': {e_remove_zip}")
-
+                os.remove(generated_pdf_path)
+            except Exception:
+                pass

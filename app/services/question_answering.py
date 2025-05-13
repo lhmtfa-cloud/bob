@@ -2,7 +2,7 @@ from pathlib import Path
 from app.services.chatpdf_client import process_pdf
 import os
 
-async def ask_questions(doc_id):
+def ask_questions(doc_id):
     caminho_atual = Path(__file__).resolve().parent.parent.parent / 'data' / 'uploads'
     #print("___________________________________________________________________________________________________________________________________")
     #print(caminho_atual)
