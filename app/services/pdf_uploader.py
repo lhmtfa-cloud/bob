@@ -3,7 +3,7 @@ import requests
 from pathlib import Path
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader, PdfWriter
-from fastapi import UploadFile
+# fastapi.UploadFile não é mais necessário diretamente nesta função combinada se passamos o path
 import asyncio
 import logging
 
@@ -39,7 +39,6 @@ if PROXY_HOST and PROXY_PORT:
         logger.info("Proxy configurado sem autenticação.")
 else:
     logger.info("Nenhuma configuração de proxy encontrada ou incompleta. Operando sem proxy.")
-
 
 def dividir_pdf_em_blocos_sync(pdf_path_str: str, output_dir_str: str, paginas_por_bloco: int = 10):
     logger.info(f"Iniciando divisão do PDF: {pdf_path_str}")
@@ -80,7 +79,6 @@ def upload_pdf_file_sync(path_to_file_str: str):
     path_to_file = Path(path_to_file_str)
     logger.info(f"Iniciando upload do arquivo: {path_to_file.name} para ChatPDF")
 
-    # Usaremos uma lista de tuplas (nome_chave_legivel, valor_chave) para facilitar o log
     api_keys_to_try = []
     if CHATPDF_API_KEY1: api_keys_to_try.append(("CHATPDF_API_KEY1", CHATPDF_API_KEY1))
     if CHATPDF_API_KEY2: api_keys_to_try.append(("CHATPDF_API_KEY2", CHATPDF_API_KEY2))
@@ -88,7 +86,7 @@ def upload_pdf_file_sync(path_to_file_str: str):
     
     if not api_keys_to_try:
         logger.error("Nenhuma chave de API do ChatPDF está configurada.")
-        return None, None # Retorna None para source_id e para a chave
+        return None, None
 
     final_response = None
     request_succeeded = False
@@ -112,7 +110,7 @@ def upload_pdf_file_sync(path_to_file_str: str):
                 proxies=proxies,
                 timeout=REQUESTS_TIMEOUT
             )
-            response_attempt.raise_for_status() 
+            response_attempt.raise_for_status()  
             
             logger.info(f"Sucesso na tentativa com {key_name} para {path_to_file.name}.")
             final_response = response_attempt
@@ -153,31 +151,20 @@ def upload_pdf_file_sync(path_to_file_str: str):
         logger.error(f"❌ Todas as tentativas de upload para {path_to_file.name} falharam.")
         return None, None
 
+async def processar_pdf_em_partes_e_enviar_path(file_path_str: str) -> tuple[list[str], list[str]]:
+    logger.info(f"Iniciando processamento assíncrono para o arquivo salvo: {file_path_str}")
 
-async def processar_pdf_em_partes_e_enviar(file: UploadFile):
-    logger.info(f"Iniciando processamento assíncrono para o arquivo: {file.filename}")
-    temp_dir = Path("./data/temp_pdfs")
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = file.filename if file.filename else "uploaded_file.pdf"
-    safe_filename = Path(filename).name 
-    temp_file_path = temp_dir / safe_filename
-    
-    try:
-        with temp_file_path.open("wb") as f:
-            content = await file.read()
-            f.write(content)
-        logger.info(f"Arquivo {safe_filename} salvo temporariamente em {temp_file_path}")
-    except Exception as e:
-        logger.error(f"Erro ao salvar arquivo temporário {safe_filename}: {e}", exc_info=True)
+    temp_file_path = Path(file_path_str)
+    if not temp_file_path.exists():
+        logger.error(f"O arquivo {temp_file_path} não existe.")
         return [], []
 
-    output_dir_split = Path("./data/split_pdfs")
+    output_dir_split = Path("./data/split_pdfs") 
     output_dir_split.mkdir(parents=True, exist_ok=True)
 
     paginas_por_bloco = 10
-    
     partes_paths_str = []
+
     try:
         logger.info(f"Agendando divisão do PDF {temp_file_path} em thread separada.")
         partes_paths_str = await asyncio.to_thread(
@@ -185,24 +172,17 @@ async def processar_pdf_em_partes_e_enviar(file: UploadFile):
         )
     except Exception as e:
         logger.error(f"Falha ao dividir o PDF no thread executor: {e}", exc_info=True)
-        if temp_file_path.exists():
-            try: temp_file_path.unlink()
-            except OSError as ose: logger.error(f"Erro ao remover {temp_file_path} após falha na divisão: {ose}")
-            else: logger.info(f"Arquivo temporário {temp_file_path} removido após falha na divisão.")
         return [], []
 
     if not partes_paths_str:
         logger.warning("Nenhuma parte do PDF foi gerada.")
-        if temp_file_path.exists():
-            try: temp_file_path.unlink()
-            except OSError as ose: logger.error(f"Erro ao remover {temp_file_path} quando nenhuma parte foi gerada: {ose}")
-            else: logger.info(f"Arquivo temporário {temp_file_path} removido pois nenhuma parte foi gerada.")
         return [], []
 
     final_source_ids = []
     final_keys_used = []
     
     upload_tasks = []
+
     for parte_path_str in partes_paths_str:
         logger.info(f"Agendando upload do arquivo {parte_path_str} em thread separada.")
         upload_tasks.append(
@@ -219,30 +199,23 @@ async def processar_pdf_em_partes_e_enviar(file: UploadFile):
                 if source_id and key_used:
                     final_source_ids.append(source_id)
                     final_keys_used.append(key_used)
-                elif source_id and not key_used: # Caso a função retorne (source_id, None)
+                elif source_id and not key_used:
                     logger.warning(f"Upload bem-sucedido para source_id {source_id} mas nenhuma chave foi registrada.")
                     final_source_ids.append(source_id)
-                    # Opcionalmente, adicione um placeholder para a chave ou investigue
-                # else: source_id é None, falha já logada em upload_pdf_file_sync
     except Exception as e:
         logger.error(f"Erro ao executar uploads em paralelo com asyncio.gather: {e}", exc_info=True)
 
-    logger.info("Iniciando limpeza dos arquivos temporários.")
+    logger.info("Iniciando limpeza dos arquivos temporários das partes divididas.")
     try:
-        if temp_file_path.exists():
-            try: temp_file_path.unlink()
-            except OSError as ose: logger.error(f"Erro ao remover arquivo original {temp_file_path}: {ose}")
-            else: logger.info(f"Arquivo temporário original {temp_file_path} removido.")
-        
         for parte_path_str in partes_paths_str:
             parte_path_obj = Path(parte_path_str)
             if parte_path_obj.exists():
                 try: parte_path_obj.unlink()
                 except OSError as ose: logger.error(f"Erro ao remover parte {parte_path_obj}: {ose}")
                 else: logger.info(f"Parte do PDF {parte_path_obj} removida.")
-        logger.info("Limpeza de arquivos temporários concluída.")
+        logger.info("Limpeza de arquivos das partes divididas concluída.")
     except Exception as e:
-        logger.error(f"Erro durante a limpeza dos arquivos temporários: {e}", exc_info=True)
+        logger.error(f"Erro durante a limpeza dos arquivos das partes divididas: {e}", exc_info=True)
 
     logger.info(f"Processamento concluído. Source IDs obtidos: {final_source_ids}, Chaves usadas: {len(final_keys_used)} (detalhes nos logs)")
     return final_source_ids, final_keys_used

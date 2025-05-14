@@ -51,11 +51,13 @@ MODEL_NAME_FOR_TOKEN_ESTIMATION = "gpt-3.5-turbo"
 MAX_TOTAL_TOKENS_THRESHOLD = 9000
 TARGET_CONTEXTO_CHUNK_TOKENS = 8000
 
+
 async def ask_local_llm(contexto: str, prompt_usuario: str):
     if not LOCAL_LLM_URL:
         logging.error("LOCAL_LLM_URL não está configurado.")
         return None
         
+
     headers = {
         'Content-Type': 'application/json'
     }

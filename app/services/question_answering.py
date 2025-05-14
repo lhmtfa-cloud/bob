@@ -3,7 +3,6 @@ from app.services.chatpdf_client import process_pdf
 from app.prompts.chatPDF import pBase 
 import os 
 
-
 async def ask_questions(doc_id: str, chatpdf_api_key: str):
     prompt_text = str(pBase)
 
