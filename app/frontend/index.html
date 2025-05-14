@@ -32,9 +32,11 @@
     let statusInterval;
     const statusMap = {
       received: { value: 10, text: "Arquivo recebido" },
+      uploading: { value: 20, text: "Enviando arquivo para processamento..." }, 
       question_answering: { value: 30, text: "Respondendo perguntas..." },
       summarizing: { value: 60, text: "Gerando resumo..." },
       generating_pdf: { value: 80, text: "Gerando PDF..." },
+      zipping: { value: 90, text: "Compactando arquivos..." }, 
       finished: { value: 100, text: "Processamento finalizado!" },
       error: { value: 0, text: "Erro no processamento." }
     };
