@@ -2,31 +2,35 @@ import requests
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from app.prompts.chatPDF import pBase
 
 load_dotenv()
-
-# Caminhos e variáveis de ambiente
-CHATPDF_API_KEY = os.getenv('CHATPDF_API_KEY')
 
 PROXY_USER = os.getenv('PROXY_USER')
 PROXY_PASS = os.getenv('PROXY_PASS')
 PROXY_HOST = os.getenv('PROXY_HOST')
 PROXY_PORT = os.getenv('PROXY_PORT')
 
-CHATPDF_UPLOAD_URL = 'https://api.chatpdf.com/v1/sources/add-file'
 CHATPDF_MESSAGE_URL = 'https://api.chatpdf.com/v1/chats/message'
 
-proxies = {
-    "http": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
-    "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
-}
+proxies = None
+if PROXY_HOST and PROXY_PORT:
+    if PROXY_USER and PROXY_PASS:
+        proxies = {
+            "http": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}",
+            "https": f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+        }
+    else:
+        proxies = {
+            "http": f"http://{PROXY_HOST}:{PROXY_PORT}",
+            "https": f"http://{PROXY_HOST}:{PROXY_PORT}"
+        }
 
-
-
-def ask_chatpdf(source_id: str, question: str):
+def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str):
+    if not chatpdf_api_key:
+        raise ValueError("CHATPDF_API_KEY é necessária para ask_chatpdf.")
+    
     headers = {
-        'x-api-key': CHATPDF_API_KEY,
+        'x-api-key': chatpdf_api_key,
         'Content-Type': 'application/json'
     }
     data = {
@@ -38,9 +42,7 @@ def ask_chatpdf(source_id: str, question: str):
     response.raise_for_status()
     return response.json()['content']
 
-def process_pdf(file_path: Path, source_id):
-    prompt = str(pBase)
-    summary = ask_chatpdf(source_id, prompt)
-
-    
+def process_pdf(source_id: str, chatpdf_api_key: str, prompt_text: str, file_path: Path = None):
+    # file_path é opcional aqui, pode ser usado para logs se necessário, mas não para a API call.
+    summary = ask_chatpdf(source_id, prompt_text, chatpdf_api_key)
     return source_id, summary
