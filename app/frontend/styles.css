@@ -6,12 +6,24 @@
 }
 
 /* Tipografia e corpo */
+html, body {
+  height: 100%;
+}
+
+
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.container {
+  padding: 40px;
   background: #f9f9fb;
   color: #333;
-  padding: 40px;
   line-height: 1.6;
+  flex: 1;
 }
 
 /* Cabeçalho */
@@ -46,6 +58,14 @@ button {
   font-size: 1em;
   transition: background-color 0.3s ease;
 }
+
+footer {
+  margin-top: auto;
+  text-align: center;
+  padding: 5px;
+  color: #000;
+}
+
 
 button:hover {
   background-color: #3730A3;

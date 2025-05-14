@@ -7,19 +7,25 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <h1>Enviar PDF para Processamento</h1>
-  <input type="file" id="pdfInput" accept="application/pdf" />
-  <button onclick="uploadPDF()">Enviar</button>
+  <div class="container">
+    <h1>Enviar PDF para Processamento</h1>
+    <input type="file" id="pdfInput" accept="application/pdf" />
+    <button onclick="uploadPDF()">Enviar</button>
 
-  <div class="progress-container hidden" id="progressSection">
-    <h3>Status de Processamento</h3>
-    <progress id="progressBar" value="0" max="100"></progress>
-    <div id="statusText">Aguardando...</div>
+    <div class="progress-container hidden" id="progressSection">
+      <h3>Status de Processamento</h3>
+      <progress id="progressBar" value="0" max="100"></progress>
+      <div id="statusText">Aguardando...</div>
+    </div>
+
+    <div id="downloadContainer" class="hidden">
+      <a id="downloadLink" href="#" download>📦 Baixar Arquivo ZIP</a>
+    </div>
   </div>
 
-  <div id="downloadContainer" class="hidden">
-    <a id="downloadLink" href="#" download>📦 Baixar Arquivo ZIP</a>
-  </div>
+  <footer>
+    <p>Feito por Henrique e Rafael @ SETI/PR</p>
+  </footer>
 
   <script>
     let trackingCode = "";
