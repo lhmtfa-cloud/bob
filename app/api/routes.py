@@ -12,7 +12,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 
 from app.services import pdf_uploader
-from app.services import Youtubeing
+from app.services import question_answering
 from app.services import summarizer
 from app.services.pdf_generator import PDFGenerator
 from app.services.state_tracker import (
@@ -149,7 +149,7 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
                         return f"Para Doc ID {doc_id}: {message}"
                     
                     print(f"[{proc_code}] Fazendo perguntas para doc_id: {doc_id}...")
-                    extracted_data = await Youtubeing.ask_questions(doc_id, api_key)
+                    extracted_data = await question_answering.ask_questions(doc_id, api_key)
                     if extracted_data:
                         return extracted_data
                     else:
