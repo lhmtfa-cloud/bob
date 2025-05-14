@@ -4,10 +4,12 @@ from threading import Lock
 
 class ProcessingStage(str, Enum):
     RECEIVED = "received"
+    UPLOADING = "uploading"
     QA_PROCESSING = "question_answering"
     SUMMARIZING = "summarizing"
     GENERATING_PDF = "generating_pdf"
     FINISHED = "finished"
+    ZIPPING = "zipping"
     ERROR = "error"
 
 state_lock = Lock()
