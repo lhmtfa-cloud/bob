@@ -1,67 +1,70 @@
 pBase = """
-Leia todas as instruções cuidadosamente antes de começar. Este é um documento PDF com até 10 páginas. Sua tarefa é analisar página por página e retornar as informações extraídas em formato estruturado, conforme modelo abaixo.
-
-> IMPORTANTE:
-- Leia TODAS as páginas, sem pular nenhuma.
-- Só escreva "imagem ilegível" quando realmente não for possível extrair **nenhum texto** da página.
-- NÃO diga "nada relevante". Se houver texto, extraia um resumo.
-- NÃO misture informações entre páginas. Verifique se cada dado está no lugar certo.
-- Respeite fielmente a numeração da página no PDF.
-- O foco é PRECISÃO, não velocidade.
-
----
-
-> MODELO OBRIGATÓRIO:
+Leia todo o prompt antes de começar. Sua tarefa é analisar um documento PDF (geralmente com 10 páginas ou menos) e me retornar as informações extraídas em um formato estruturado. A análise deve ser feita página por página, com foco em precisão. Ignore cabeçalhos, rodapés e elementos decorativos.
+Certifiquesse de não adicionar páginas que não existem.
+Formato obrigatório da resposta:
 
 {
-Tipo do documento: [Ex: Compra, Contrato, Ofício, etc. Inferir a partir da 1ª página. Se não for possível, deixe em branco.]
-Remetente: [nome ou entidade que envia]
-Data do envio: [data mencionada no início ou assinatura]
-Destinatário: [nome ou entidade que recebe]
+Tipo do documento: [ex: Compra]
+Remetente: [nome ou entidade]
+Data do envio: [data]
+Destinatário: [nome ou entidade]
 }
-
 {
-página: [número]
-resumo da página: [resuma com suas próprias palavras o conteúdo da página]
-quem assinou: [nomes de quem assinou ou “ninguém”]
+página: [número da página]
+resumo da página: [texto resumido do conteudo da página]
+quem assinou: [nomes ou “ninguém”]
 leis: [leis citadas ou “nenhuma”]
-órgãos envolvidos: [nomes de órgãos públicos ou entidades mencionadas, ou “nenhum”]
-data: [todas as datas mencionadas na página, ou “nenhuma”]
-cálculo: [valores, preços, orçamentos ou “nenhum”]
+órgãos envolvidos: [nomes de órgãos públicos ou entidades]
+data: [datas mencionadas]
+cálculo: [valores mencionados, exemplo: “gasto previsto de R$10.000,00”]
 }
 
-> Repita esse segundo bloco para CADA página (1 a 10), mesmo que seja imagem ou contenha pouco conteúdo.
+> Repita esse segundo bloco para *todas* as páginas, mesmo que a página não contenha dados relevantes. Se algum campo estiver ausente, preencha com “nenhum” ou “em branco”.
 
-> Use “imagem ilegível” apenas se a IA não conseguir ler nada da página.
+> O campo “Tipo do documento” deve ser inferido com base na combinação entre a “Palavra-chave” e “Detalhamento” da primeira página do PDF. Se não encontrar essa informação, deixe em branco.
 
-> O campo “cálculo” deve incluir qualquer menção a valores monetários, quantidades, índices, projeções, etc.
+> O campo “Cálculo” deve ser preenchido quando houver menções a valores, preços, gastos, orçamentos, etc. Exemplo: “O custo total será de R$15.000,00”.
 
-> É de extrema importância que *TODAS* as leis sejam anotadas
+> Seja meticuloso. Priorize exatidão acima de velocidade.
 
-> O campo “Tipo do documento” deve ser baseado em palavras como “Contrato”, “Requisição”, “Ofício”, “Ata”, “Nota Técnica”, “Relatório”, etc., preferencialmente da primeira página.
-
----
-
-> Exemplo prático de resposta:
+Exemplo esperado:
 
 {
-Tipo do documento: Compra Direta  
-Remetente: UEL 
-Data do envio: 14/12/2046  
-Destinatário: nenhum  
+Tipo do documento: Compra
+Remetente: João
+Data do envio: 28/02/2004
+Destinatário: Julia
 }
-
 {
-página: 1  
-resumo da página: Documento que autoriza compra direta de algodão.  
-quem assinou: João, Caroline 
-leis: nenhuma  
-órgãos envolvidos: UEL  
-data: 14/03/2025  
-cálculo: aquisição de 20 pacotes de algodão 
+página: 1
+quem assinou: ninguém
+leis: nenhuma
+órgãos envolvidos: Picaimba, Governo do Estado, UEL.
+resumo da página: Essa página descreve os requisitos para a aprovação da lei.
+data: xx/xx/xxxx, yy/yy/yyyy
+cálculo: Compra de 10 kg de mostarda.
+}
+{
+página: 2
+quem assinou: ...
+leis: ...
+órgãos envolvidos: ...
+resumo da página: Essa página continua descrevevendo os requisitos para a aprovação da lei.
+data: ...
+cálculo: ...
+}
+...
+{
+página: 10
+quem assinou: ...
+leis: ...
+órgãos envolvidos: ...
+resumo da página: Essa página descreve Os beneficios da compra de algodão na pitaibia do sul
+data: ...
+cálculo: ...
 }
 
-[repita esse bloco até a página 10]
-
-
+>faça para *TODAS* as 10 páginas 
+>verifique se você não adicionou páginas que não existem.
+>verifique se você adicionou informações nas páginas erradas.
 """
