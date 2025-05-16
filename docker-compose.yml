@@ -1,14 +1,18 @@
+version: '3.8' 
+
 services:
-  fastapi-pdf:
+  fastapi-pdf: 
     build: .
-    container_name: fastapi_pdf_service
+
+    container_name: ${CONTAINER_NAME_CUSTOM:-fastapi_pdf_service}
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/summaries:/app/data/summaries
     ports:
-      - "8000:8000"
+      - "${FASTAPI_PDF_HOST_PORT:-8000}:8000"
     environment:
       - UPLOAD_DIR=/app/data/uploads
       - SUMMARY_DIR=/app/data/summaries
     env_file:
       - .env
+

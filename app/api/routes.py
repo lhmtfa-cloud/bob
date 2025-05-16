@@ -26,25 +26,28 @@ storage_dir = "/tmp/processed_zips"
 os.makedirs(storage_dir, exist_ok=True)
 
 def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
+
     blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
+
     if not blocks:
         return raw_contexto_str
 
-    page_offset = 0
-    processed_first_document_header = False
-    adjusted_block_strings = []
+    page_offset = 0  
+    processed_first_document_header = False 
+    adjusted_block_strings = [] 
 
     for block_str in blocks:
-        modified_block_str = block_str
+        modified_block_str = block_str 
+
         if "Tipo do documento:" in block_str:
             if processed_first_document_header:
-                page_offset += 10
+                page_offset += 10 
             else:
                 processed_first_document_header = True
         elif "página:" in block_str:
             match = re.search(r"(página:\s*)(\d+)", modified_block_str)
             if match:
-                prefix = match.group(1)
+                prefix = match.group(1) 
                 original_page_num_str = match.group(2)
                 try:
                     original_page_num = int(original_page_num_str)
@@ -54,8 +57,11 @@ def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
                     )
                 except ValueError:
                     pass
+        
         adjusted_block_strings.append(modified_block_str)
+    
     return "\n\n".join(adjusted_block_strings)
+
 
 @router.post("/process-pdf", status_code=202)
 async def start_pdf_processing(file: UploadFile = File(...)):

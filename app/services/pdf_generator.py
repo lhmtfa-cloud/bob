@@ -103,7 +103,7 @@ class PDFGenerator:
         base_paragraph_style = styles['Normal']
         base_paragraph_style.fontName = FONT_FAMILY 
         base_paragraph_style.fontSize = 12
-        base_paragraph_style.leading = 12 * 1.5 # Espaçamento de 1.5
+        base_paragraph_style.leading = 12 * 1.5
 
         if not tabela_processada: doc.build(elements); return
         
@@ -132,10 +132,6 @@ class PDFGenerator:
         
         data_for_rl_table = []
         
-        WORDS_PER_DETAILS_CHUNK = 70 # Ajuste este valor! Fonte maior, menos palavras cabem.
-                                     # Aumente para menos repetições do "item".
-                                     # Diminua para mais repetições.
-
         for row_idx, original_row in enumerate(tabela_processada):
             is_header_row = (row_idx == 0)
             
@@ -143,82 +139,61 @@ class PDFGenerator:
             while len(current_row_cells) < num_cols: current_row_cells.append("")
             current_row_cells = current_row_cells[:num_cols]
 
-            current_item_text = str(current_row_cells[item_column_index]) if item_column_index != -1 and item_column_index < len(current_row_cells) else ""
-            
-            item_text_to_draw, item_style = self._determine_reportlab_style(
-                current_item_text, is_header_row, True, False, base_paragraph_style
-            )
-            item_paragraph_obj = Paragraph(item_text_to_draw, item_style)
+            styled_row_cells = [None] * num_cols
 
-            current_details_text = ""
+            if item_column_index != -1 and item_column_index < len(current_row_cells):
+                current_item_text = str(current_row_cells[item_column_index])
+                item_text_to_draw, item_style = self._determine_reportlab_style(
+                    current_item_text, is_header_row, True, False, base_paragraph_style
+                )
+
+                styled_row_cells[item_column_index] = Paragraph(item_text_to_draw, item_style)
+
+
             if details_column_index != -1 and details_column_index < len(current_row_cells):
                 current_details_text = str(current_row_cells[details_column_index])
-
-            if details_column_index != -1 and current_details_text.strip() and not is_header_row :
-                words_in_details_list = current_details_text.split(' ')
-                first_chunk_this_logical_row = True
-                start_word_index = 0
-                while start_word_index < len(words_in_details_list):
-                    end_word_index = min(start_word_index + WORDS_PER_DETAILS_CHUNK, len(words_in_details_list))
-                    actual_chunk_text = " ".join(words_in_details_list[start_word_index:end_word_index])
-                    
-                    _, details_style = self._determine_reportlab_style(actual_chunk_text, False, False, False, base_paragraph_style)
-                    details_paragraph = Paragraph(actual_chunk_text, details_style)
-                    
-                    rl_row_segment = [None] * num_cols
-                    if item_column_index != -1: rl_row_segment[item_column_index] = item_paragraph_obj
-                    if details_column_index != -1: rl_row_segment[details_column_index] = details_paragraph
-                    
-                    if first_chunk_this_logical_row:
-                        for c_idx in range(num_cols):
-                            if c_idx != item_column_index and c_idx != details_column_index:
-                                cell_text_other = str(current_row_cells[c_idx])
-                                text_other_draw, style_other = self._determine_reportlab_style(cell_text_other, is_header_row, False, False, base_paragraph_style)
-                                rl_row_segment[c_idx] = Paragraph(text_other_draw, style_other)
-                    else:
-                        for c_idx in range(num_cols):
-                            if c_idx != item_column_index and c_idx != details_column_index:
-                                 _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
-                                 rl_row_segment[c_idx] = Paragraph("", style_empty)
-                    
-                    for c_idx in range(num_cols):
-                        if rl_row_segment[c_idx] is None:
-                            _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
-                            rl_row_segment[c_idx] = Paragraph("", style_empty)
-                    data_for_rl_table.append(rl_row_segment)
-                    
-                    start_word_index = end_word_index
-                    first_chunk_this_logical_row = False
-                    if start_word_index >= len(words_in_details_list): break
-            else:
-                styled_row_cells = [None] * num_cols
-                for c_idx in range(num_cols):
-                    cell_content = str(current_row_cells[c_idx])
-                    is_current_cell_item_col = (c_idx == item_column_index)
-                    is_current_cell_details_header = (is_header_row and c_idx == details_column_index)
-
-                    text_to_draw, cell_style_obj = self._determine_reportlab_style(
-                        cell_content, is_header_row, 
-                        is_current_cell_item_col, 
-                        is_current_cell_details_header,
-                        base_paragraph_style
-                    )
-                    styled_row_cells[c_idx] = Paragraph(text_to_draw, cell_style_obj)
                 
-                for c_idx in range(num_cols):
-                    if styled_row_cells[c_idx] is None:
-                        _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
-                        styled_row_cells[c_idx] = Paragraph("", style_empty)
-                data_for_rl_table.append(styled_row_cells)
+                if is_header_row:
+                    text_to_draw, details_style = self._determine_reportlab_style(
+                        current_details_text, True, False, True, base_paragraph_style
+                    )
+                    styled_row_cells[details_column_index] = Paragraph(text_to_draw, details_style)
+                else:
+                    _, details_style = self._determine_reportlab_style(
+                        current_details_text, False, False, False, base_paragraph_style
+                    )
+ 
+                    details_paragraph = Paragraph(current_details_text, details_style)
+                    styled_row_cells[details_column_index] = details_paragraph
+            
+            for c_idx in range(num_cols):
+                if styled_row_cells[c_idx] is not None: 
+                    continue
+
+                cell_content = str(current_row_cells[c_idx])
+                is_current_cell_item_col = (c_idx == item_column_index) 
+                is_current_cell_details_header = (is_header_row and c_idx == details_column_index)
+
+                text_to_draw, cell_style_obj = self._determine_reportlab_style(
+                    cell_content, is_header_row, 
+                    is_current_cell_item_col, 
+                    is_current_cell_details_header,
+                    base_paragraph_style
+                )
+                styled_row_cells[c_idx] = Paragraph(text_to_draw, cell_style_obj)
+            
+            for c_idx in range(num_cols):
+                if styled_row_cells[c_idx] is None:
+                    _, style_empty = self._determine_reportlab_style("", False, False, False, base_paragraph_style)
+                    styled_row_cells[c_idx] = Paragraph("", style_empty)
+            
+            data_for_rl_table.append(styled_row_cells)
 
         if not data_for_rl_table: doc.build(elements); return
 
         table_obj = Table(data_for_rl_table, colWidths=col_widths_rl, 
-                          repeatRows=(1 if is_header_row and len(tabela_processada) > 0 and \
-                                      len(data_for_rl_table) > 0 and \
-                                      len(data_for_rl_table[0]) == num_cols and \
-                                      row_idx == 0 else 0) # Só repete cabeçalho se a primeira linha lógica era de fato um cabeçalho.
-                         )
+                          repeatRows=(1 if tabela_processada and tabela_processada[0] and row_idx == 0 else 0), 
+                         ) 
         
         table_style_cmds = [
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
@@ -228,6 +203,8 @@ class PDFGenerator:
             ('TOPPADDING', (0,0), (-1,-1), 1*mm),
             ('BOTTOMPADDING', (0,0), (-1,-1), 1*mm),
         ]
+
+ 
         table_obj.setStyle(TableStyle(table_style_cmds))
         elements.append(table_obj)
         doc.build(elements)
