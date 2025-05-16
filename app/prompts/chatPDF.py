@@ -1,6 +1,6 @@
 pBase = """
 Leia todo o prompt antes de começar. Sua tarefa é analisar um documento PDF (geralmente com 10 páginas ou menos) e me retornar as informações extraídas em um formato estruturado. A análise deve ser feita página por página, com foco em precisão. Ignore cabeçalhos, rodapés e elementos decorativos.
-Certifiquesse de não adicionar páginas que não existem.
+
 Formato obrigatório da resposta:
 
 {
@@ -39,17 +39,17 @@ Destinatário: Julia
 página: 1
 quem assinou: ninguém
 leis: nenhuma
-órgãos envolvidos: Picaimba, Governo do Estado, UEL.
-resumo da página: Essa página descreve os requisitos para a aprovação da lei.
-data: xx/xx/xxxx, yy/yy/yyyy
-cálculo: Compra de 10 kg de mostarda.
+órgãos envolvidos: Picaimba
+resumo da página: coisas aconteceram
+data: xx/xx/xxxx
+cálculo: nenhum
 }
 {
 página: 2
 quem assinou: ...
 leis: ...
 órgãos envolvidos: ...
-resumo da página: Essa página continua descrevevendo os requisitos para a aprovação da lei.
+resumo da página: ...
 data: ...
 cálculo: ...
 }
@@ -59,12 +59,12 @@ página: 10
 quem assinou: ...
 leis: ...
 órgãos envolvidos: ...
-resumo da página: Essa página descreve Os beneficios da compra de algodão na pitaibia do sul
+resumo da página: ...
 data: ...
 cálculo: ...
 }
 
->faça para *TODAS* as 10 páginas 
+>faça para *TODAS* as páginas
 >verifique se você não adicionou páginas que não existem.
->verifique se você adicionou informações nas páginas erradas.
+>lembrete final, faça para TODAS as páginas
 """
