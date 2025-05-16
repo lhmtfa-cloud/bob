@@ -4,7 +4,7 @@ pergunta = (
     "- A primeira linha contendo os cabeçalhos: 'item', 'detalhes'.\n"
     "- A segunda linha contendo os separadores: |---|---|---| (um por coluna).\n"
     "- Na coluna 'item' deve ter 'tipo do documento', 'Leis', 'Assinaturas' e 'Resumo'\n"
-    "- O tipo de resumo, remetente e destinatário devem ser apenas do primeiro bloco, ignore o segundo.\n"
+    "- O tipo de resumo, remetente e destinatário devem ser apenas do primeiro bloco, ignore o segundo bloco desse tipo.\n"
     "- A segunda linha contendo os separadores: |---|---|---| (um por coluna).\n"
     "- Cada linha subsequente deve conter os dados correspondentes de forma linear, sem quebras de linha internas nas células.\n\n"
     
@@ -23,7 +23,8 @@ pergunta = (
     "- O resumo em ordem cronológica\n"
     "- As páginas as quais as informações do resumo estão\n\n"
     
-    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos."
+    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos.\n"
+    "Certifique-se de que todas as páginas dos dados estejam na tabela."
 
     
 )
