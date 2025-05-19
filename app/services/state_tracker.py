@@ -17,7 +17,7 @@ processing_states: Dict[str, str] = {}
 
 def set_processing_state(code: str, stage: ProcessingStage):
     with state_lock:
-        processing_states[code] = stage
+        processing_states[code] = stage.value
 
 def get_processing_state(code: str) -> str:
     with state_lock:
