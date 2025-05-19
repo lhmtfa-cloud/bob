@@ -1,5 +1,5 @@
 pBase = """
-Leia todo o prompt antes de começar. Sua tarefa é analisar um documento PDF (geralmente com 10 páginas ou menos) e me retornar as informações extraídas em um formato estruturado. A análise deve ser feita página por página, com foco em precisão. Ignore cabeçalhos, rodapés e elementos decorativos.
+Leia todo o prompt antes de começar. Sua tarefa é analisar um documento PDF (geralmente com ~30 páginas) e me retornar as informações extraídas em um formato estruturado. A análise deve ser feita página por página, com foco em precisão. Ignore cabeçalhos, rodapés e elementos decorativos.
 
 Formato obrigatório da resposta:
 
@@ -65,6 +65,7 @@ cálculo: ...
 }
 
 >faça para *TODAS* as páginas
->verifique se você não adicionou páginas que não existem.
+
+
 >lembrete final, faça para TODAS as páginas
 """
