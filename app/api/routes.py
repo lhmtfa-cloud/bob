@@ -7,10 +7,11 @@ import re
 import uuid
 import asyncio
 import traceback
+from PyPDF2 import PdfReader
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
-
+from app.services import limpar
 from app.services import pdf_uploader
 from app.services import question_answering
 from app.services import summarizer
@@ -24,36 +25,7 @@ router = APIRouter()
 storage_dir = "/tmp/processed_zips"
 os.makedirs(storage_dir, exist_ok=True)
 
-def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
-    blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
-    if not blocks:
-        return raw_contexto_str
-
-    page_offset = 0
-    processed_first_document_header = False
-    adjusted_block_strings = []
-
-    for block_str in blocks:
-        modified_block_str = block_str
-        if "Tipo do documento:" in block_str:
-            if processed_first_document_header:
-                page_offset += 10
-            else:
-                processed_first_document_header = True
-        elif "página:" in block_str:
-            match = re.search(r"(página:\s*)(\d+)", modified_block_str)
-            if match:
-                prefix = match.group(1)
-                original_page_num_str = match.group(2)
-                original_page_num = int(original_page_num_str)
-                new_page_num = original_page_num + page_offset
-                modified_block_str = re.sub(
-                    r"(página:\s*)\d+", f"{prefix}{new_page_num}", modified_block_str, count=1
-                )
-        adjusted_block_strings.append(modified_block_str)
-    return "\n\n".join(adjusted_block_strings)
-
-async def _execute_qa_for_document_direct(doc_id: str, api_key: str | None, proc_code: str) -> str:
+async def execute_qa_for_document_direct(doc_id: str, api_key: str | None, proc_code: str) -> str:
     if not api_key:
         raise ValueError(f"[{proc_code}] Chave de API ausente para doc_id {doc_id} durante QA.")
     
@@ -120,8 +92,11 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
     zip_file_final_path = os.path.join(storage_dir, f"{code}.zip")
     
     print(f"[{code}] Iniciando processamento direto para: {original_filename}")
-
+    num_paginas = 0
     try:
+        with open(temp_file_path, 'rb') as f_pdf:
+                reader = PdfReader(f_pdf)
+                num_paginas = len(reader.pages)
         set_processing_state(code, ProcessingStage.UPLOADING)
         all_source_ids, _keys_used_temp = await pdf_uploader.processar_pdf_em_partes_e_enviar_path(temp_file_path)
         print(f"[{code}] PDF uploader processou e obteve {len(all_source_ids)} source_id(s).")
@@ -133,14 +108,15 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
             qa_coroutines = []
             for i, doc_id in enumerate(all_source_ids):
                 api_key_for_doc = _keys_used_temp[i] 
-                qa_coroutines.append(_execute_qa_for_document_direct(doc_id, api_key_for_doc, code))
+                qa_coroutines.append(execute_qa_for_document_direct(doc_id, api_key_for_doc, code))
             
             qa_results = await asyncio.gather(*qa_coroutines)
             extracted_data_list_for_context.extend(res for res in qa_results if res) 
         
         contexto_original_temp = "\n\n".join(filter(None, extracted_data_list_for_context))
-        contexto_ajustado = ajustar_numeros_de_pagina(contexto_original_temp)
-        print(f"[{code}] Contexto preparado (primeiros 100 chars): {contexto_ajustado[:100]}...")
+        contexto_ajustado_pag = limpar.ajustar_numeros_de_pagina(contexto_original_temp)
+        contexto_ajustado_ex = limpar.filtrar_contexto_por_pagina(contexto_ajustado_pag, num_paginas)
+        contexto_ajustado = limpar.remover_blocos_metadados_string(contexto_ajustado_ex)
         
         set_processing_state(code, ProcessingStage.SUMMARIZING)
         print(f"[{code}] Gerando resumo com LLM (summarizer)...")

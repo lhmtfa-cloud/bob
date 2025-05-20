@@ -19,7 +19,7 @@ pergunta = (
     "- Nome de todas as pessoas que assinaram o documento\n"
     "- TODAS as leis, normas e decretos citados\n"
     "- As páginas as quais as informações do resumo estão\n"
-    "- O resumo em ordem cronológica\n"
+    "- O resumo em ordem cronológica, começando da página 1\n"
     "- As páginas as quais as informações do resumo estão\n\n"
     
     "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos."
@@ -53,7 +53,8 @@ corrigir =(
     "- O resumo em ordem cronológica\n"
     "- As páginas as quais as informações do resumo estão\n\n"
     
-    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos."
+    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos.\n" \
+    "Certifique-se de que as informações da tabela começem desda primeira página."
 
     
 
