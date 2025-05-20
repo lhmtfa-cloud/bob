@@ -1,4 +1,6 @@
 import re
+import os
+import glob
 
 def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
     blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
@@ -77,4 +79,21 @@ def remover_blocos_metadados_string(conteudo_string):
         conteudo_modificado = conteudo_modificado[:bloco_para_remover.start()] + \
                               conteudo_modificado[bloco_para_remover.end():]
 
-    return conteudo_modificado
+def limpar_arquivos_temporarios(temp_file_path, generated_pdf_path_original, code="GERAL"):
+    if temp_file_path and os.path.exists(temp_file_path):
+        try:
+            os.remove(temp_file_path)
+            print(f"[{code}] Arquivo temporário '{temp_file_path}' removido.")
+        except Exception as e_remove_temp:
+            print(f"[{code}] Erro ao remover arquivo temporário '{temp_file_path}': {e_remove_temp}")
+    elif temp_file_path:
+        print(f"[{code}] Arquivo temporário '{temp_file_path}' não encontrado para remoção.")
+
+    if generated_pdf_path_original and os.path.exists(generated_pdf_path_original):
+        try:
+            os.remove(generated_pdf_path_original)
+            print(f"[{code}] PDF original gerado '{generated_pdf_path_original}' limpo.")
+        except Exception as e_remove_pdf_orig:
+            print(f"[{code}] Erro ao remover PDF original gerado '{generated_pdf_path_original}': {e_remove_pdf_orig}")
+    elif generated_pdf_path_original:
+        print(f"[{code}] PDF original gerado '{generated_pdf_path_original}' não encontrado para remoção.")
