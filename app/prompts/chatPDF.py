@@ -66,7 +66,7 @@ cálculo: ...
 
 >faça para *TODAS* as páginas
 
->É de extrema importância que *TODAS* as leis sejam anotadas.
+>É de extrema importância que *TODAS* as leis de todas as páginas sejam anotadas.
 
 >lembrete final, faça para TODAS as páginas
 """

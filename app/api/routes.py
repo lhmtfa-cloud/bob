@@ -115,8 +115,7 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         
         contexto_original_temp = "\n\n".join(filter(None, extracted_data_list_for_context))
         contexto_ajustado_pag = limpar.ajustar_numeros_de_pagina(contexto_original_temp)
-        contexto_ajustado_ex = limpar.filtrar_contexto_por_pagina(contexto_ajustado_pag, num_paginas)
-        contexto_ajustado = limpar.remover_blocos_metadados_string(contexto_ajustado_ex)
+        contexto_ajustado = limpar.filtrar_contexto_por_pagina(contexto_ajustado_pag, num_paginas)
         
         set_processing_state(code, ProcessingStage.SUMMARIZING)
         print(f"[{code}] Gerando resumo com LLM (summarizer)...")
@@ -164,4 +163,16 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         print(f"[{code}] Processamento 'direto' concluído. ZIP salvo em: {zip_file_final_path}")
 
     finally:
-        limpar.limpar_arquivos_temporarios(temp_file_path, generated_pdf_path_original, code)
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+                print(f"[{code}] Arquivo temporário '{temp_file_path}' removido.")
+            except Exception as e_remove_temp:
+                print(f"[{code}] Erro ao remover arquivo temporário '{temp_file_path}': {e_remove_temp}")
+        
+        if generated_pdf_path_original and os.path.exists(generated_pdf_path_original):
+            try:
+                os.remove(generated_pdf_path_original)
+                print(f"[{code}] PDF original gerado '{generated_pdf_path_original}' limpo.")
+            except Exception as e_remove_pdf_orig:
+                print(f"[{code}] Erro ao remover PDF original gerado '{generated_pdf_path_original}': {e_remove_pdf_orig}")

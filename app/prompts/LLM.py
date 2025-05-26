@@ -22,6 +22,7 @@ pergunta = (
     "- O resumo em ordem cronológica, começando da página 1\n"
     "- As páginas as quais as informações do resumo estão\n\n"
     
+    "Certifique-se de que *TODAS* as leis estejam na tabela."
     "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos."
 
     
@@ -29,7 +30,7 @@ pergunta = (
 
 
 corrigir =(
-"corrija a tabela, colocando as informações no formato:\n." \
+"Junte as tabelas em uma, colocando as informações no formato:\n." \
 "Gere uma tabela em formato Markdown com os dados extraídos do resumo do documento. "
     "A estrutura da tabela deve ser rigorosamente delimitada por barras verticais (|), com:\n"
     "- A primeira linha contendo os cabeçalhos: 'item', 'detalhes'.\n"
@@ -45,7 +46,7 @@ corrigir =(
 
     "Itens obrigatórios no conteúdo:\n"
     "- As páginas as quais as informações leis e assinaturas estão.\n"
-    "- Tipo do documento\n"
+    "- Tipo do documento, que deve ser apenas o primeiro que aparece\n"
     "- Todas as leis, normas e decretos citados\n"
     "- Nome de todas as pessoas que assinaram o documento\n"
     "- TODAS as leis, normas e decretos citados\n"
@@ -53,7 +54,9 @@ corrigir =(
     "- O resumo em ordem cronológica\n"
     "- As páginas as quais as informações do resumo estão\n\n"
     
-    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos.\n" \
+    "Certifique-se de que todos os campos estejam devidamente preenchidos, e que não haja omissões nos dados críticos.\n" 
+    "O Tipo do documento' deve ser apenas o primeiro encontrado, o que for encontrado nas primeiras páginas.\n"
+    "Certifique-se de que *TODAS* as leis estejam na tabela."
     "Certifique-se de que as informações da tabela começem desda primeira página."
 
     
