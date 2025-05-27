@@ -11,8 +11,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 FONT_FAMILY = 'Times'
-# Se usar Times, o Bold correspondente é geralmente 'Times-Bold'
-# Se FONT_FAMILY_BOLD for um arquivo .ttf específico, certifique-se de registrá-lo com pdfmetrics.registerFont
 FONT_FAMILY_BOLD = 'Times-Bold' 
 
 
@@ -20,19 +18,6 @@ class PDFGenerator:
     def __init__(self, output_dir="output_pdfs"):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-        # Exemplo de registro de fonte (descomente e ajuste se necessário):
-        # try:
-        #     pdfmetrics.registerFont(TTFont('Times-Roman', 'TIMES.ttf'))
-        #     pdfmetrics.registerFont(TTFont('Times-Bold', 'TIMESBD.ttf'))
-        #     global FONT_FAMILY, FONT_FAMILY_BOLD
-        #     FONT_FAMILY = 'Times-Roman'
-        #     FONT_FAMILY_BOLD = 'Times-Bold'
-        # except Exception as e:
-        #     print(f"Aviso: Não foi possível registrar fontes TTF, usando padrões PDF. Erro: {e}")
-        #     FONT_FAMILY = 'Times-Roman' # Fallback para fontes padrão PDF
-        #     FONT_FAMILY_BOLD = 'Times-Bold'
-
-
     async def create_summary_pdf(self, structured_summary: str) -> str:
         os.makedirs(self.output_dir, exist_ok=True)
         tabela_raw = self._extrair_tabela(structured_summary)

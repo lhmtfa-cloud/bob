@@ -198,7 +198,7 @@ async def processar_pdf_em_partes_e_enviar_path(file_path_str: str) -> tuple[lis
                 source_id, key_used = result
                 if source_id and key_used:
                     final_source_ids.append(source_id)
-                    final_keys_used.append(key_used)
+                    final_keys_used.append(key_used) 
                 elif source_id and not key_used:
                     logger.warning(f"Upload bem-sucedido para source_id {source_id} mas nenhuma chave foi registrada.")
                     final_source_ids.append(source_id)
