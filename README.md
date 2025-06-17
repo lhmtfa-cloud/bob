@@ -3,9 +3,9 @@
 O que Bob faz:
 - [x] Aceita upload de PDF
 - [x] Envia o PDF para a API do ChatPDF
-- [ ] Pergunta para o chatPDF
-- [ ] Gera dados estruturados com agentes de IA locais
-- [ ] Cria um PDF com o resumo e assinatura
+- [x] Pergunta para o chatPDF
+- [x] Gera dados estruturados com agentes de IA locais
+- [x] Cria um PDF com o resumo e assinaturas
 
 ## 🚀 Run Locally
 
