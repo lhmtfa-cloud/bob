@@ -31,10 +31,10 @@ body {
   z-index: -1; /* Coloca o vídeo atrás de outro conteúdo */
 }
 
-#backgroundVideo {
+#backgroundGif {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* Garante que o vídeo cubra toda a área, cortando se necessário */
+  object-fit: cover;
 }
 
 .container {
@@ -45,7 +45,6 @@ body {
   flex: 1;
   position: relative;
   z-index: 1;
-  border-radius: 12px;
   box-shadow: 0 8px 25px rgba(0,0,0,0.1); /* Sombra mais suave e moderna */
   display: flex;
   flex-direction: column;

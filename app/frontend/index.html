@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Processador de PDF com Vídeo</title>
+  <title>BobIA</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
 <body>
   <div class="video-container">
-    <video autoplay loop muted playsinline id="backgroundVideo">
-      <source src="./meu_video.mp4" type="video/mp4">
-      O seu navegador não suporta a tag de vídeo.
-    </video>
+    <img src="./meu_gif.gif" alt="Plano de fundo animado" id="backgroundGif">
   </div>
 
   <div class="container">
@@ -72,7 +69,10 @@
 
 
     async function uploadPDF() {
-      // const fileInput = document.getElementById("pdfInput"); // Já definido acima como pdfInput
+      // Limpa qualquer intervalo de verificação anterior
+      clearInterval(statusInterval);
+
+      const pdfInput = document.getElementById("pdfInput");
       if (!pdfInput.files.length) {
         showModal("Selecione um arquivo PDF");
         return;
@@ -81,9 +81,12 @@
       const formData = new FormData();
       formData.append("file", pdfInput.files[0]);
 
+      // Reseta a interface para o novo envio
       document.getElementById("progressSection").classList.remove("hidden");
+      document.getElementById("downloadContainer").classList.add("hidden"); // Esconde o link de download antigo
       document.getElementById("statusText").textContent = "Enviando...";
       document.getElementById("progressBar").value = 5;
+
 
       try {
         const response = await fetch("/process-pdf", {
@@ -96,14 +99,18 @@
         const data = await response.json();
         trackingCode = data.tracking_code;
 
+        // Inicia o loop de verificação para o *novo* código de rastreamento
         checkStatusLoop(trackingCode, data.download_url);
       } catch (error) {
         console.error('Erro ao enviar o PDF:', error);
         document.getElementById("statusText").textContent = "Erro ao enviar o arquivo.";
         showModal(`Erro ao enviar o arquivo: ${error.message}`);
+        // Limpa o intervalo em caso de erro no envio
+        clearInterval(statusInterval);
+        // Reseta o label do input
+        fileUploadLabel.innerHTML = defaultLabelText;
       }
     }
-
     function checkStatusLoop(code, downloadUrl) {
       statusInterval = setInterval(async () => {
         try {
@@ -200,6 +207,7 @@
         modal.appendChild(closeButton);
         document.body.appendChild(modal);
     }
+    
   </script>
 </body>
 </html>

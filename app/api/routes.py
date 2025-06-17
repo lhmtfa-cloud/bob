@@ -115,8 +115,10 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         
         contexto_original_temp = "\n\n".join(filter(None, extracted_data_list_for_context))
         contexto_ajustado_pag = limpar.ajustar_numeros_de_pagina(contexto_original_temp)
-        contexto_ajustado = limpar.filtrar_contexto_por_pagina(contexto_ajustado_pag, num_paginas)
-        
+        contexto_ajustado_filtro = limpar.filtrar_contexto_por_pagina(contexto_ajustado_pag, num_paginas)
+        contexto_ajustar = limpar.ajustar(contexto_ajustado_filtro)
+        contexto_ajustado = limpar.padronizar_indicadores_de_pagina(contexto_ajustar)
+
         set_processing_state(code, ProcessingStage.SUMMARIZING)
         print(f"[{code}] Gerando resumo com LLM (summarizer)...")
         structured_summary = await summarizer.generate_summary(contexto_ajustado, all_source_ids if all_source_ids else [])
