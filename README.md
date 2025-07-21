@@ -12,7 +12,9 @@ O que Bob faz:
  - Criar arquivo .env na raíz do projeto
 
 ```
-CHATPDF_API_KEY=sec_XXXXXX
+CHATPDF_API_KEY1=sec_XXXXXX
+CHATPDF_API_KEY2=sec_XXXXXX
+CHATPDF_API_KEY3=sec_XXXXXX
 PROXY_USER=usuario
 PROXY_PASS=senha
 PROXY_HOST=proxy01.seti.parana
