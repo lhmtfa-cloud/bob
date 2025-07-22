@@ -9,35 +9,77 @@ import json
 import unicodedata
 
 # As funções abaixo permanecem as mesmas
-def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
-    blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
-    if not blocks:
-        return raw_contexto_str
+# --- NOVA FUNÇÃO UNIFICADA E SIMPLIFICADA ---
+def estruturar_dados_finais(contexto_corrigido: str) -> str:
+    """
+    Recebe o contexto com números de página já corrigidos e apenas
+    agrega, ordena e formata a saída final.
+    """
+    if not contexto_corrigido: return ""
+    
+    output_parts = []
+    
+    # Pega o cabeçalho (já está no início do texto)
+    cabecalho_match = re.search(r"(\{[\s\S]*?Tipo do documento:[\s\S]*?\})", contexto_corrigido)
+    if cabecalho_match:
+        output_parts.append(cabecalho_match.group(1))
+    else:
+        output_parts.append("{\nTipo do documento: --\nRemetente: --\nData do envio: --\nDestinatário: --\n}")
+        
+    quem_assinou_list, leis_list, orgaos_envolvidos_list, datas_list, calculos_list, resumos_pagina_list = [], [], [], [], [], []
+    placeholders_to_skip = {"nenhum", "nenhuma", "ninguém", "--"}
 
-    page_offset = 0
-    processed_first_document_header = False
-    adjusted_block_strings = []
+    def extrair_numero_pagina(texto: str) -> int:
+        match = re.search(r'\(Página (\d+)\)$', texto)
+        return int(match.group(1)) if match else float('inf')
 
-    for block_str in blocks:
-        modified_block_str = block_str
-        if "Tipo do documento:" in block_str:
-            if processed_first_document_header:
-                page_offset += 10
-            else:
-                processed_first_document_header = True
-        elif "página:" in block_str:
-            match = re.search(r"(página:\s*)(\d+)", modified_block_str)
-            if match:
-                prefix = match.group(1)
-                original_page_num_str = match.group(2)
-                original_page_num = int(original_page_num_str)
-                new_page_num = original_page_num + page_offset
-                modified_block_str = re.sub(
-                    r"(página:\s*)\d+", f"{prefix}{new_page_num}", modified_block_str, count=1
-                )
-        adjusted_block_strings.append(modified_block_str)
-    return "\n\n".join(adjusted_block_strings)
+    # Itera sobre os blocos de PÁGINA
+    blocos_de_pagina = re.findall(r"(\{[\s\S]*?página:[\s\S]*?\})", contexto_corrigido)
+    for bloco_str in blocos_de_pagina:
+        current_page_num_str = re.search(r"página:\s*(\d+)", bloco_str).group(1)
+        
+        for line in bloco_str.splitlines():
+            # A lógica de extração com regex continua a mesma
+            if match := re.match(r"^\s*quem assinou\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: quem_assinou_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*leis\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: leis_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*órgãos envolvidos\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: orgaos_envolvidos_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*data\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: datas_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*cálculo\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: calculos_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*resumo da página\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: resumos_pagina_list.append(f"{val} (Página {current_page_num_str})")
 
+    # Ordena as listas
+    quem_assinou_list.sort(key=extrair_numero_pagina)
+    leis_list.sort(key=extrair_numero_pagina)
+    orgaos_envolvidos_list.sort(key=extrair_numero_pagina)
+    datas_list.sort(key=extrair_numero_pagina)
+    calculos_list.sort(key=extrair_numero_pagina)
+    resumos_pagina_list.sort(key=extrair_numero_pagina)
+
+    # Monta o bloco de dados final
+    bloco_de_dados_linhas = ["{"]
+    if quem_assinou_list: bloco_de_dados_linhas.append(f"quem assinou: {', '.join(quem_assinou_list)}")
+    if leis_list: bloco_de_dados_linhas.append(f"leis: {', '.join(leis_list)}")
+    if orgaos_envolvidos_list: bloco_de_dados_linhas.append(f"órgãos envolvidos: {', '.join(orgaos_envolvidos_list)}")
+    if datas_list: bloco_de_dados_linhas.append(f"data: {', '.join(datas_list)}")
+    if calculos_list: bloco_de_dados_linhas.append(f"cálculo: {', '.join(calculos_list)}")
+    if resumos_pagina_list: bloco_de_dados_linhas.append(f"resumo da página: {', '.join(resumos_pagina_list)}")
+    bloco_de_dados_linhas.append("}")
+    
+    output_parts.append("\n".join(bloco_de_dados_linhas))
+
+    return "\n\n".join(output_parts)
 
 def filtrar_contexto_por_pagina(contexto_str: str, numero_max_paginas_documento: int) -> str:
     if not contexto_str:
@@ -64,135 +106,103 @@ def filtrar_contexto_por_pagina(contexto_str: str, numero_max_paginas_documento:
             blocos_validos.append(bloco)
 
     return "\n\n".join(blocos_validos)
+import re
 
-def ajustar(raw_contexto_str: str) -> str:
-    output_parts = []
-    remaining_text = raw_contexto_str
+def processar_e_estruturar_contexto(raw_contexto_str: str, paginas_por_bloco: int) -> str:
+    """
+    Função robusta e unificada que processa o texto bruto da IA.
+    1. Separa cabeçalhos e blocos de página.
+    2. Mantém apenas o primeiro cabeçalho.
+    3. Corrige a numeração das páginas reiniciada usando um offset.
+    4. Agrega e ordena todas as informações.
+    5. Formata a saída final, omitindo campos vazios.
+    """
+    if not raw_contexto_str:
+        return ""
 
-    default_first_block = "{\nTipo do documento: --\nRemetente:--\nData do envio: --\nDestinatário: --\n}"
+    todos_os_blocos = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
     
-    first_block_match = re.search(r"^\s*{\s*([\s\S]*?)\s*}\s*", remaining_text, re.MULTILINE)
+    # 1. Separa cabeçalhos e páginas
+    blocos_de_cabecalho = [b for b in todos_os_blocos if 'Tipo do documento:' in b]
+    blocos_de_pagina_raw = [b for b in todos_os_blocos if 'página:' in b]
 
-    if first_block_match:
-        block_content_str = first_block_match.group(1).strip()
-        output_parts.append("{\n" + block_content_str + "\n}")
-        remaining_text = remaining_text[first_block_match.end():].strip()
-    else:
-        output_parts.append(default_first_block)
+    # 2. Seleciona o cabeçalho final (o primeiro encontrado)
+    cabecalho_final = blocos_de_cabecalho[0] if blocos_de_cabecalho else "{\nTipo do documento: --\nRemetente: --\nData do envio: --\nDestinatário: --\n}"
 
-    quem_assinou_list = []
-    leis_list = []
-    orgaos_envolvidos_list = []
-    datas_list = []
-    calculos_list = []
-    resumos_pagina_list = []
+    # 3. Corrige a numeração das páginas de forma robusta
+    blocos_de_pagina_corrigidos = []
+    page_offset = 0
+    ultima_pagina_original = 0
+    for bloco_str in blocos_de_pagina_raw:
+        match = re.search(r"página:\s*(\d+)", bloco_str)
+        if not match: continue
 
-    page_block_regex = re.compile(r"{\s*([\s\S]*?)\s*}", re.MULTILINE)
-    
-    placeholders_to_skip = {"nenhum", "nenhuma", "ninguém"}
+        pagina_original_atual = int(match.group(1))
 
-    for block_match in page_block_regex.finditer(remaining_text):
-        block_content = block_match.group(1).strip()
-        block_lines = block_content.splitlines()
-
-        current_page_num_str = None
-        temp_resumo_lines = []
-        collecting_resumo = False
-
-        for line in block_lines:
-            page_num_match = re.match(r"^\s*página\s*:\s*(\d+)\s*$", line, re.IGNORECASE)
-            if page_num_match:
-                current_page_num_str = page_num_match.group(1)
-                break 
+        # A condição de reinício é se a página atual for menor que a anterior
+        if pagina_original_atual < ultima_pagina_original:
+            page_offset += paginas_por_bloco
         
-        if not current_page_num_str:
-            continue
+        pagina_corrigida = pagina_original_atual + page_offset
+        
+        bloco_corrigido = re.sub(r"(página:\s*)(\d+)", f"\\g<1>{pagina_corrigida}", bloco_str, 1)
+        blocos_de_pagina_corrigidos.append(bloco_corrigido)
+        
+        ultima_pagina_original = pagina_original_atual
 
-        for line_idx, line in enumerate(block_lines):
-            if collecting_resumo:
-                is_new_key = any(
-                    re.match(p, line, re.IGNORECASE) for p in [
-                        r"^\s*página\s*:", r"^\s*quem assinou\s*:", r"^\s*leis\s*:",
-                        r"^\s*órgãos envolvidos\s*:", r"^\s*data\s*:", r"^\s*cálculo\s*:"
-                    ]
-                )
-                if is_new_key:
-                    if temp_resumo_lines:
-                        resumo_val = "\n".join(temp_resumo_lines).strip()
-                        if resumo_val.lower() not in placeholders_to_skip and resumo_val:
-                            resumos_pagina_list.append(f"{resumo_val} (Página {current_page_num_str})")
-                    temp_resumo_lines = []
-                    collecting_resumo = False
-                else:
-                    temp_resumo_lines.append(line.strip())
-                    if line_idx == len(block_lines) - 1 and temp_resumo_lines:
-                        resumo_val = "\n".join(temp_resumo_lines).strip()
-                        if resumo_val.lower() not in placeholders_to_skip and resumo_val:
-                            resumos_pagina_list.append(f"{resumo_val} (Página {current_page_num_str})")
-                        temp_resumo_lines = []
-                        collecting_resumo = False
-                    continue
+    # 4. Agrega e Ordena os dados das páginas já corrigidas
+    quem_assinou_list, leis_list, orgaos_envolvidos_list, datas_list, calculos_list, resumos_pagina_list = [], [], [], [], [], []
+    placeholders_to_skip = {"nenhum", "nenhuma", "ninguém", "--"}
 
+    def extrair_numero_pagina(texto: str) -> int:
+        match = re.search(r'\(Página (\d+)\)$', texto)
+        return int(match.group(1)) if match else float('inf')
+
+    for bloco_corrigido in blocos_de_pagina_corrigidos:
+        current_page_num_str = re.search(r"página:\s*(\d+)", bloco_corrigido).group(1)
+        
+        # Extrai os dados de cada linha do bloco corrigido
+        for line in bloco_corrigido.splitlines():
             if match := re.match(r"^\s*quem assinou\s*:\s*(.+)\s*$", line, re.IGNORECASE):
-                val = match.group(1).strip()
-                if val.lower() not in placeholders_to_skip and val:
-                    quem_assinou_list.append(f"{val} (Página {current_page_num_str})")
-                continue
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: quem_assinou_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*leis\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: leis_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*órgãos envolvidos\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: orgaos_envolvidos_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*data\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: datas_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*cálculo\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: calculos_list.append(f"{val} (Página {current_page_num_str})")
+            elif match := re.match(r"^\s*resumo da página\s*:\s*(.+)\s*$", line, re.IGNORECASE):
+                val = match.group(1).strip().strip('}')
+                if val.lower() not in placeholders_to_skip and val: resumos_pagina_list.append(f"{val} (Página {current_page_num_str})")
 
-            if match := re.match(r"^\s*leis\s*:\s*(.+)\s*$", line, re.IGNORECASE):
-                val = match.group(1).strip()
-                if val.lower() not in placeholders_to_skip and val:
-                    leis_list.append(f"{val} (Página {current_page_num_str})")
-                continue
+    # A ordenação garante a cronologia correta no final
+    quem_assinou_list.sort(key=extrair_numero_pagina)
+    leis_list.sort(key=extrair_numero_pagina)
+    orgaos_envolvidos_list.sort(key=extrair_numero_pagina)
+    datas_list.sort(key=extrair_numero_pagina)
+    calculos_list.sort(key=extrair_numero_pagina)
+    resumos_pagina_list.sort(key=extrair_numero_pagina)
 
-            if match := re.match(r"^\s*órgãos envolvidos\s*:\s*(.+)\s*$", line, re.IGNORECASE):
-                val = match.group(1).strip()
-                if val.lower() not in placeholders_to_skip and val:
-                    orgaos_envolvidos_list.append(f"{val} (Página {current_page_num_str})")
-                continue
+    # 5. Monta o bloco de dados final, omitindo campos vazios
+    bloco_de_dados_linhas = ["{"]
+    if quem_assinou_list: bloco_de_dados_linhas.append(f"quem assinou: {', '.join(quem_assinou_list)}")
+    if leis_list: bloco_de_dados_linhas.append(f"leis: {', '.join(leis_list)}")
+    if orgaos_envolvidos_list: bloco_de_dados_linhas.append(f"órgãos envolvidos: {', '.join(orgaos_envolvidos_list)}")
+    if datas_list: bloco_de_dados_linhas.append(f"data: {', '.join(datas_list)}")
+    if calculos_list: bloco_de_dados_linhas.append(f"cálculo: {', '.join(calculos_list)}")
+    if resumos_pagina_list: bloco_de_dados_linhas.append(f"resumo da página: {', '.join(resumos_pagina_list)}")
+    bloco_de_dados_linhas.append("}")
+    
+    bloco_de_dados_final = "\n".join(bloco_de_dados_linhas)
 
-            if match := re.match(r"^\s*resumo da página\s*:\s*(.*)\s*$", line, re.IGNORECASE):
-                collecting_resumo = True
-                initial = match.group(1).strip()
-                if initial:
-                    temp_resumo_lines.append(initial)
-                if line_idx == len(block_lines) - 1 and temp_resumo_lines:
-                    resumo_val = "\n".join(temp_resumo_lines).strip()
-                    if resumo_val.lower() not in placeholders_to_skip and resumo_val:
-                        resumos_pagina_list.append(f"{resumo_val} (Página {current_page_num_str})")
-                    temp_resumo_lines = []
-                    collecting_resumo = False
-                continue
-
-            if match := re.match(r"^\s*data\s*:\s*(.+)\s*$", line, re.IGNORECASE):
-                val = match.group(1).strip()
-                if val.lower() not in placeholders_to_skip and val:
-                    datas_list.append(f"{val} (Página {current_page_num_str})")
-                continue
-
-            if match := re.match(r"^\s*cálculo\s*:\s*(.+)\s*$", line, re.IGNORECASE):
-                val = match.group(1).strip()
-                if val.lower() not in placeholders_to_skip and val:
-                    calculos_list.append(f"{val} (Página {current_page_num_str})")
-                continue
-
-        if collecting_resumo and temp_resumo_lines:
-            resumo_val = "\n".join(temp_resumo_lines).strip()
-            if resumo_val.lower() not in placeholders_to_skip and resumo_val:
-                resumos_pagina_list.append(f"{resumo_val} (Página {current_page_num_str})")
-
-    second_block_lines = ["{"]
-    second_block_lines.append(f"quem assinou: {', '.join(quem_assinou_list) if quem_assinou_list else '--'}")
-    second_block_lines.append(f"leis: {', '.join(leis_list) if leis_list else '--'}")
-    second_block_lines.append(f"órgãos envolvidos: {', '.join(orgaos_envolvidos_list) if orgaos_envolvidos_list else '--'}")
-    second_block_lines.append(f"data: {', '.join(datas_list) if datas_list else '--'}")
-    second_block_lines.append(f"cálculo: {', '.join(calculos_list) if calculos_list else '--'}")
-    second_block_lines.append(f"resumo da página: {', '.join(resumos_pagina_list) if resumos_pagina_list else '--'}")
-    second_block_lines.append("}")
-    output_parts.append("\n".join(second_block_lines))
-
-    return "\n\n".join(output_parts)
-
+    return f"{cabecalho_final}\n\n{bloco_de_dados_final}"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
