@@ -4,6 +4,7 @@ from threading import Lock
 
 class ProcessingStage(str, Enum):
     RECEIVED = "received"
+    PREPARING = "preparing"
     UPLOADING = "uploading"
     QA_PROCESSING = "question_answering"
     SUMMARIZING = "summarizing"

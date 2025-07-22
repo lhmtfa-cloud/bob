@@ -1,11 +1,14 @@
+# limpar.py
+
 import re
 import os
 import glob
-from PyPDF2 import PdfReader
+import fitz  # PyMuPDF
 import logging
 import json
 import unicodedata
 
+# As funções abaixo permanecem as mesmas
 def ajustar_numeros_de_pagina(raw_contexto_str: str) -> str:
     blocks = re.findall(r"(\{[\s\S]*?\})", raw_contexto_str)
     if not blocks:
@@ -191,30 +194,43 @@ def ajustar(raw_contexto_str: str) -> str:
     return "\n\n".join(output_parts)
 
 
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ===== FUNÇÃO MODIFICADA (VERSÃO 2) =====
 def extrair_texto_com_marcacao_de_paginas(pdf_path: str) -> str:
-
-    logger.info(f"Extraindo texto com marcação de páginas de: {pdf_path}")
+    """
+    Extrai texto de um PDF usando PyMuPDF, capturando todos os blocos de texto
+    e ordenando-os para garantir a extração completa e na ordem correta.
+    """
+    logger.info(f"Extraindo texto com marcação de páginas de: {pdf_path} (usando PyMuPDF - modo de blocos)")
     try:
-        reader = PdfReader(pdf_path)
-        total_paginas = len(reader.pages)
-        blocos = []
+        doc = fitz.open(pdf_path)
+        blocos_de_saida = []
 
-        for i in range(total_paginas):
-            pagina = reader.pages[i]
-            texto = pagina.extract_text() or "" 
-            texto = texto.strip()
-            blocos.append(f"### Página {i+1}\n{texto if texto else '[sem conteúdo visível]'}\n---")
+        for i, page in enumerate(doc.pages()):
+            # 1. Extrai todos os blocos de texto. Cada 'bloco' é um parágrafo.
+            # O retorno é uma lista de tuplas: (x0, y0, x1, y1, "texto", num_bloco, tipo_bloco)
+            blocos_de_texto = page.get_text("blocks")
+            
+            # 2. Ordena os blocos pela sua posição na página (de cima para baixo, depois da esquerda para a direita)
+            # Isso garante a ordem de leitura correta.
+            blocos_de_texto.sort(key=lambda b: (b[1], b[0]))
+            
+            # 3. Junta o texto de todos os blocos ordenados
+            texto_completo_da_pagina = "\n".join([b[4].strip() for b in blocos_de_texto])
+            texto_completo_da_pagina = texto_completo_da_pagina.strip()
 
-        return "\n".join(blocos)
+            # Adiciona a marcação de página e o conteúdo extraído
+            blocos_de_saida.append(f"### Página {i+1}\n{texto_completo_da_pagina if texto_completo_da_pagina else '[sem conteúdo de texto visível]'}\n---")
+
+        doc.close()
+        return "\n".join(blocos_de_saida)
 
     except Exception as e:
-        logger.error(f"Erro ao extrair texto do PDF: {e}", exc_info=True)
+        logger.error(f"Erro ao extrair texto do PDF com PyMuPDF: {e}", exc_info=True)
         return ""
-
+# =======================================
 
 
 def converter_contexto_para_tabela_markdown(contexto_str: str) -> str:
@@ -311,4 +327,3 @@ def _clean_llm_summary_chunk(chunk_text: str) -> str:
     processed_text = re.sub(r'\s+', ' ', processed_text).strip()
 
     return processed_text
-

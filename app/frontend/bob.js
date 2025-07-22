@@ -3,8 +3,9 @@ let trackingCode = "";
 let statusInterval;
 const statusMap = {
   received: { value: 10, text: "Arquivo recebido" },
-  uploading: { value: 20, text: "Enviando arquivo para processamento..." },
-  question_answering: { value: 30, text: "Respondendo perguntas..." },
+  preparing: { value: 20, text: "Lendo arquivo" },
+  uploading: { value: 30, text: "Enviando arquivo para processamento..." },
+  question_answering: { value: 40, text: "Respondendo perguntas..." },
   summarizing: { value: 60, text: "Gerando resumo..." },
   generating_pdf: { value: 80, text: "Gerando PDF..." },
   zipping: { value: 90, text: "Compactando arquivos..." },
