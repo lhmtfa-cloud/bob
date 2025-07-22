@@ -118,7 +118,7 @@ def upload_pdf_file_sync(path_to_file_str: str):
 async def processar_e_enviar_texto_em_blocos(
     texto_completo: str, 
     codigo_processamento: str,
-    paginas_logicas_por_bloco: int = 10,
+    paginas_logicas_por_bloco: int = 5,
     delay_segundos_entre_uploads: int = 1
 ) -> tuple[list[str], list[str | None]]:
     """
