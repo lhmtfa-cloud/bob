@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - BobIA</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body>
+    <div class="container admin-panel">
+        <div class="header-nav">
+          <div class="header-nav-left">
+            <h1>Painel de Administração</h1>
+          </div>
+          <div class="header-nav-right">
+            <div class="settings-row admin-dark-mode-row">
+              <i class="fas fa-moon"></i>
+              <label class="switch">
+                <input type="checkbox" id="dark-mode-toggle">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <a href="/app" class="nav-link">Página Principal</a>
+            <button id="logout-button" class="nav-button">Sair</button>
+          </div>
+        </div>
+
+        <section id="stats-section">
+            <h2>Estatísticas de Uso</h2>
+            <div class="table-container">
+                <table id="stats-table">
+                    <thead>
+                        <tr>
+                            <th>Utilizador</th>
+                            <th>Uploads</th>
+                            <th>Requisições</th>
+                            <th>Última Atividade</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="uploads-section">
+            <h2>Uploads das Últimas 24h</h2>
+            <div class="table-container">
+                <table id="uploads-table">
+                    <thead>
+                        <tr>
+                            <th>Utilizador</th>
+                            <th>Arquivo</th>
+                            <th>Data</th>
+                            <th>Status</th>
+                            <th>Download</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="users-section">
+            <h2>Gerenciar Utilizadores</h2>
+            <div class="table-container">
+                <table id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Utilizador</th>
+                            <th>Papel</th>
+                            <th>Criado em</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div id="create-user-form">
+                <h3>Criar Novo Utilizador</h3>
+                <input type="text" id="new-username" placeholder="Nome de utilizador" required>
+                <input type="password" id="new-password" placeholder="Senha" required>
+                <select id="new-user-role">
+                    <option value="user">Utilizador</option>
+                    <option value="admin">Admin</option>
+                </select>
+                <button id="create-user-btn">Criar</button>
+            </div>
+        </section>
+
+    </div>
+    <script src="/static/admin.js"></script>
+</body>
+</html>

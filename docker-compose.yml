@@ -1,4 +1,4 @@
-version: '3.12' 
+version: '3.8' 
 
 services:
   fastapi-pdf: 
@@ -8,6 +8,8 @@ services:
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/summaries:/app/data/summaries
+      - bobia_data:/app/data
+      - bobia_zips:/app/processed_zips
     ports:
       - "${FASTAPI_PDF_HOST_PORT:-8000}:8000"
     environment:
@@ -16,3 +18,6 @@ services:
     env_file:
       - .env
 
+volumes:
+  bobia_data:
+  bobia_zips:

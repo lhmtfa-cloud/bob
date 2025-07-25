@@ -1,6 +1,7 @@
-
 let trackingCode = "";
 let statusInterval;
+let currentUserRole = "user";
+
 const statusMap = {
   received: { value: 10, text: "Arquivo recebido" },
   preparing: { value: 20, text: "Lendo arquivo" },
@@ -13,26 +14,173 @@ const statusMap = {
   error: { value: 0, text: "Erro no processamento." }
 };
 
-// Adiciona um listener para atualizar o texto do label quando um arquivo é selecionado
-const pdfInput = document.getElementById('pdfInput');
-const fileUploadLabel = document.querySelector('.custom-file-upload');
-const defaultLabelText = fileUploadLabel.innerHTML; // Guarda o texto original do label
+document.addEventListener('DOMContentLoaded', function() {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+    
+    initializeDarkMode();
+    
+    fetch('/users/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(response => {
+        if (!response.ok) {
+            localStorage.removeItem('accessToken');
+            window.location.href = '/login';
+            throw new Error('Sessão inválida ou expirada.');
+        }
+        return response.json();
+    })
+    .then(user => {
+        currentUserRole = user.role;
+        document.getElementById('welcome-message').textContent = `Bem-vindo, ${user.username}!`;
+        if (user.role === 'admin' || user.role === 'superuser') {
+            document.getElementById('admin-link').style.display = 'inline-block';
+        }
+    })
+    .catch((error) => {
+        console.error(error.message);
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
+    });
 
-pdfInput.addEventListener('change', function(e){
-  if(e.target.files && e.target.files.length > 0) {
-    // Mostra o nome do arquivo no label
-    // Pode precisar de um ícone diferente ou estilo para o nome do arquivo
-    fileUploadLabel.innerHTML = `<i class="fas fa-file-pdf"></i> ${e.target.files[0].name}`;
-  } else {
-    // Volta ao texto original se nenhum arquivo for selecionado
-    fileUploadLabel.innerHTML = defaultLabelText;
-  }
+    const pdfInput = document.getElementById('pdfInput');
+    const fileUploadLabel = document.querySelector('.custom-file-upload');
+    const defaultLabelText = fileUploadLabel.innerHTML;
+
+    pdfInput.addEventListener('change', function(e){
+      if(e.target.files && e.target.files.length > 0) {
+        fileUploadLabel.innerHTML = `<i class="fas fa-file-pdf"></i> ${e.target.files[0].name}`;
+      } else {
+        fileUploadLabel.innerHTML = defaultLabelText;
+      }
+    });
+
+    document.getElementById('logout-button').addEventListener('click', () => {
+        localStorage.removeItem('accessToken');
+        window.location.href = '/login';
+    });
+
+    setupSettingsModal();
 });
 
+function setupSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    const btn = document.getElementById('settings-btn');
+    const span = document.getElementsByClassName('close-btn')[0];
+
+    if(!modal || !btn || !span) {
+        console.error("Elementos do modal de configurações não encontrados.");
+        return;
+    }
+
+    btn.onclick = function() {
+        modal.style.display = 'block';
+    }
+    span.onclick = function() {
+        modal.style.display = 'none';
+    }
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    document.getElementById('password-change-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const currentPassword = document.getElementById('current-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const statusEl = document.getElementById('password-change-status');
+        const token = localStorage.getItem('accessToken');
+
+        statusEl.textContent = 'A guardar...';
+        statusEl.style.color = 'gray';
+
+        try {
+            const response = await fetch('/users/me/password', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword
+                })
+            });
+
+            if (response.status === 204) {
+                statusEl.textContent = 'Palavra-passe alterada com sucesso!';
+                statusEl.style.color = 'green';
+                e.target.reset();
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Falha ao alterar a palavra-passe.');
+            }
+        } catch (error) {
+            statusEl.textContent = `Erro: ${error.message}`;
+            statusEl.style.color = 'red';
+        }
+    });
+
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    darkModeToggle.addEventListener('change', function() {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', this.checked);
+    });
+}
+
+function initializeDarkMode() {
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    if(darkModeToggle) {
+        darkModeToggle.checked = isDarkMode;
+    }
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+    }
+}
+
+async function handleAuthenticatedDownload(url, filename) {
+    const token = localStorage.getItem('accessToken');
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        a.remove();
+    } catch (error) {
+        console.error('Erro no download:', error);
+        showModal(`Falha no download: ${error.message}`);
+    }
+}
 
 async function uploadPDF() {
-  // Limpa qualquer intervalo de verificação anterior
   clearInterval(statusInterval);
+  const token = localStorage.getItem('accessToken');
+  if (!token) {
+      showModal("Sessão expirada. Faça login novamente.");
+      window.location.href = '/login';
+      return;
+  }
 
   const pdfInput = document.getElementById("pdfInput");
   if (!pdfInput.files.length) {
@@ -43,42 +191,43 @@ async function uploadPDF() {
   const formData = new FormData();
   formData.append("file", pdfInput.files[0]);
 
-  // Reseta a interface para o novo envio
   document.getElementById("progressSection").classList.remove("hidden");
-  document.getElementById("downloadContainer").classList.add("hidden"); // Esconde o link de download antigo
+  document.getElementById("downloadContainer").classList.add("hidden");
   document.getElementById("statusText").textContent = "Enviando...";
   document.getElementById("progressBar").value = 5;
-
 
   try {
     const response = await fetch("/process-pdf", {
       method: "POST",
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData
     });
     if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
     trackingCode = data.tracking_code;
 
-    // Inicia o loop de verificação para o *novo* código de rastreamento
-    checkStatusLoop(trackingCode, data.download_url);
+    checkStatusLoop(trackingCode);
   } catch (error) {
     console.error('Erro ao enviar o PDF:', error);
     document.getElementById("statusText").textContent = "Erro ao enviar o arquivo.";
     showModal(`Erro ao enviar o arquivo: ${error.message}`);
-    // Limpa o intervalo em caso de erro no envio
     clearInterval(statusInterval);
-    // Reseta o label do input
-    fileUploadLabel.innerHTML = defaultLabelText;
   }
 }
-function checkStatusLoop(code, downloadUrl) {
+
+function checkStatusLoop(code) {
+  const token = localStorage.getItem('accessToken');
   statusInterval = setInterval(async () => {
     try {
-      const res = await fetch(`/processing-status/${code}`);
+      const res = await fetch(`/processing-status/${code}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        const errorData = await res.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${res.status}`);
       }
       const data = await res.json();
 
@@ -89,25 +238,43 @@ function checkStatusLoop(code, downloadUrl) {
 
       if (status === "finished") {
         clearInterval(statusInterval);
-        document.getElementById("downloadLink").href = downloadUrl;
+        const downloadLink = document.getElementById("downloadLink");
+        
+        let downloadUrl, downloadFilename, linkText;
+
+        if (currentUserRole === 'admin' || currentUserRole === 'superuser') {
+            downloadUrl = `/download/zip/${code}`;
+            downloadFilename = `processado_${code}.zip`;
+            linkText = '📦 Baixe o ZIP';
+        } else {
+            downloadUrl = `/download/pdf/${code}`;
+            downloadFilename = `resumo_${code}.pdf`;
+            linkText = '📄 Baixe o PDF';
+        }
+
+        downloadLink.textContent = linkText;
+        downloadLink.removeAttribute('href');
+        
+        const newDownloadLink = downloadLink.cloneNode(true);
+        downloadLink.parentNode.replaceChild(newDownloadLink, downloadLink);
+
+        newDownloadLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleAuthenticatedDownload(downloadUrl, downloadFilename);
+        });
+
         document.getElementById("downloadContainer").classList.remove("hidden");
-        // Resetar o label do input de arquivo após o sucesso
-        fileUploadLabel.innerHTML = defaultLabelText;
       }
 
       if (status === "error") {
         clearInterval(statusInterval);
         showModal("Ocorreu um erro durante o processamento do arquivo.");
-          // Resetar o label do input de arquivo após erro
-        fileUploadLabel.innerHTML = defaultLabelText;
       }
     } catch(error) {
       console.error('Erro ao consultar status:', error);
       document.getElementById("statusText").textContent = "Erro ao consultar status.";
       showModal(`Erro ao consultar status: ${error.message}`);
       clearInterval(statusInterval);
-        // Resetar o label do input de arquivo após erro na consulta
-      fileUploadLabel.innerHTML = defaultLabelText;
     }
   }, 2000);
 }
@@ -117,32 +284,29 @@ function showModal(message) {
     if (existingModal) {
         existingModal.remove();
     }
-
     const modal = document.createElement('div');
     modal.id = 'customModal';
     modal.style.position = 'fixed';
     modal.style.left = '50%';
     modal.style.top = '50%';
     modal.style.transform = 'translate(-50%, -50%)';
-    modal.style.padding = '25px'; // Aumentar padding
-    modal.style.backgroundColor = '#fff'; // Fundo branco
-    modal.style.border = 'none'; // Remover borda
-    modal.style.borderRadius = '10px'; // Cantos mais arredondados
-    modal.style.boxShadow = '0 10px 25px rgba(0,0,0,0.15), 0 6px 10px rgba(0,0,0,0.1)'; // Sombra mais pronunciada
-    modal.style.zIndex = '1000';
+    modal.style.padding = '25px';
+    modal.style.backgroundColor = 'var(--modal-bg)';
+    modal.style.color = 'var(--text-color)';
+    modal.style.borderRadius = '10px';
+    modal.style.boxShadow = '0 10px 25px var(--modal-shadow)';
+    modal.style.zIndex = '1001';
     modal.style.textAlign = 'center';
-    modal.style.minWidth = '300px'; // Largura mínima
-    modal.style.maxWidth = '90%'; // Largura máxima responsiva
+    modal.style.minWidth = '300px';
+    modal.style.maxWidth = '90%';
 
     const messageP = document.createElement('p');
     messageP.textContent = message;
-    messageP.style.marginBottom = '20px'; // Aumentar margem
-    messageP.style.fontSize = '1.1em'; // Aumentar tamanho da fonte
-    messageP.style.color = '#333'; // Cor do texto
+    messageP.style.marginBottom = '20px';
+    messageP.style.fontSize = '1.1em';
 
     const closeButton = document.createElement('button');
     closeButton.textContent = 'OK';
-    // Reutilizar o estilo do botão principal, mas talvez com cores diferentes ou mais simples
     closeButton.style.padding = '10px 25px';
     closeButton.style.backgroundImage = 'linear-gradient(to right, #667eea 0%, #764ba2 51%, #667eea 100%)';
     closeButton.style.backgroundSize = '200% auto';
@@ -151,22 +315,9 @@ function showModal(message) {
     closeButton.style.borderRadius = '8px';
     closeButton.style.cursor = 'pointer';
     closeButton.style.fontSize = '1em';
-    closeButton.style.fontWeight = '500';
-    closeButton.style.transition = 'all 0.3s ease';
-    closeButton.style.boxShadow = '0 2px 8px rgba(116, 79, 168, 0.5)';
-
-    closeButton.onmouseover = () => {
-        closeButton.style.backgroundPosition = 'right center';
-        closeButton.style.boxShadow = '0 4px 12px rgba(116, 79, 168, 0.65)';
-    };
-    closeButton.onmouseout = () => {
-        closeButton.style.backgroundPosition = 'left center';
-        closeButton.style.boxShadow = '0 2px 8px rgba(116, 79, 168, 0.5)';
-    };
     closeButton.onclick = () => modal.remove();
 
     modal.appendChild(messageP);
     modal.appendChild(closeButton);
     document.body.appendChild(modal);
 }
-
