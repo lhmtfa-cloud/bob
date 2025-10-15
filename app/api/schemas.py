@@ -9,6 +9,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     role: Role = Role.user
+    api_key: Optional[str] = None
 
 class UserUpdateRole(BaseModel):
     role: Role

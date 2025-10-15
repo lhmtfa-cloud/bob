@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import asyncio
 import logging
 import tempfile
+import math
 
 # --- Importações da ReportLab ---
 from reportlab.platypus import SimpleDocTemplate, Paragraph, PageBreak
@@ -49,8 +50,8 @@ def gerar_pdf_marcado_com_reportlab(texto_completo_extraido: str, pdf_output_pat
     styles = getSampleStyleSheet()
     style = styles['Normal']
     style.fontName = FONT_FAMILY
-    style.fontSize = 10
-    style.leading = 12
+    style.fontSize = 6
+    style.leading = 10
 
     paginas_texto = texto_completo_extraido.split('---')
     
@@ -88,14 +89,42 @@ if PROXY_HOST and PROXY_PORT:
     proxy_url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}" if PROXY_USER and PROXY_PASS else f"http://{PROXY_HOST}:{PROXY_PORT}"
     proxies = {"http": proxy_url, "https": proxy_url}
 
-def upload_pdf_file_sync(path_to_file_str: str):
+# --- FUNÇÃO MODIFICADA ---
+def upload_pdf_file_sync(path_to_file_str: str, user_api_key: str | None = None):
+    """
+    Função de upload modificada para priorizar a chave do usuário e registrar as tentativas.
+    """
     path_to_file = Path(path_to_file_str)
-    api_keys_to_try = [k for k in [CHATPDF_API_KEY1, CHATPDF_API_KEY2, CHATPDF_API_KEY3] if k]
-    if not api_keys_to_try:
-        logger.error("Nenhuma chave de API do ChatPDF está configurada.")
-        return None, None
     
-    for key_name, key_value in enumerate(api_keys_to_try):
+    # --- INÍCIO DA LÓGICA DE SELEÇÃO DE CHAVE API ---
+    api_keys_to_try = []
+    key_sources = [] # Para ajudar no logging
+
+    # 1. Adiciona a chave do usuário como prioridade, se existir
+    if user_api_key:
+        api_keys_to_try.append(user_api_key)
+        key_sources.append("Chave do Usuário")
+
+    # 2. Adiciona as chaves globais, evitando duplicatas
+    global_keys = [
+        ("Chave Global 1", CHATPDF_API_KEY1),
+        ("Chave Global 2", CHATPDF_API_KEY2),
+        ("Chave Global 3", CHATPDF_API_KEY3)
+    ]
+    for name, key in global_keys:
+        if key and key not in api_keys_to_try:
+            api_keys_to_try.append(key)
+            key_sources.append(name)
+
+    if not api_keys_to_try:
+        logger.error("Nenhuma chave de API (nem de usuário, nem global) está configurada.")
+        return None, None
+    # --- FIM DA LÓGICA DE SELEÇÃO DE CHAVE API ---
+    
+    for i, key_value in enumerate(api_keys_to_try):
+        key_name_for_log = key_sources[i]
+        logger.info(f"Tentando upload de '{path_to_file.name}' com a '{key_name_for_log}'...")
+
         current_headers = {'x-api-key': key_value}
         try:
             with open(path_to_file, 'rb') as f:
@@ -105,23 +134,23 @@ def upload_pdf_file_sync(path_to_file_str: str):
                 data = response.json()
                 source_id = data.get('sourceId')
                 if source_id:
-                    logger.info(f"✅ Upload bem-sucedido para ChatPDF: {path_to_file.name} → ID: {source_id}")
+                    logger.info(f"✅ Upload bem-sucedido com a '{key_name_for_log}': {path_to_file.name} → ID: {source_id}")
                     return source_id, key_value
         except Exception as e:
-            logger.warning(f"Falha no upload com chave {key_name+1}: {e}")
+            logger.warning(f"Falha no upload com a '{key_name_for_log}': {e}")
     
     logger.error(f"❌ Todas as tentativas de upload para {path_to_file.name} falharam.")
     return None, None
 
-
+# --- FUNÇÃO MODIFICADA ---
 async def processar_e_enviar_texto_em_blocos(
     texto_completo: str, 
     codigo_processamento: str,
-    delay_segundos_entre_uploads: int = 1
+    user_api_key: str | None = None # Novo parâmetro para a chave do usuário
 ) -> tuple[list[str], list[str | None]]:
     """
-    Divide o texto extraído com base nas marcações '### Página', gera um PDF para cada bloco
-    de texto e faz o upload para o ChatPDF.
+    Divide o texto, gera PDFs e faz o upload, agora com delay dinâmico e
+    suporte para chave de API do usuário.
     """
     paginas_logicas = texto_completo.split('---')
     paginas_logicas = [p for p in paginas_logicas if p.strip()]
@@ -129,6 +158,9 @@ async def processar_e_enviar_texto_em_blocos(
     if not paginas_logicas:
         logger.warning("Nenhuma página lógica encontrada no texto extraído.")
         return [], []
+
+    num_blocos = math.ceil(len(paginas_logicas) / PAGINAS_POR_BLOCO)
+
 
     source_ids = []
     keys_usadas_para_sources = []
@@ -142,15 +174,15 @@ async def processar_e_enviar_texto_em_blocos(
             texto_do_bloco = "---".join(bloco_de_paginas)
             
             caminho_pdf_bloco = os.path.join(temp_dir, f"bloco_{num_part}.pdf")
-            logger.info(f"Gerando PDF para o bloco {num_part}...")
+            logger.info(f"Gerando PDF para o bloco {num_part}/{num_blocos}...")
             gerar_pdf_marcado_com_reportlab(texto_do_bloco, caminho_pdf_bloco)
             
-            source_id, key_usada = upload_pdf_file_sync(caminho_pdf_bloco)
+            # Passa a chave do usuário para a função de upload
+            source_id, key_usada = upload_pdf_file_sync(caminho_pdf_bloco, user_api_key)
             if source_id:
                 source_ids.append(source_id)
                 keys_usadas_para_sources.append(key_usada)
             
-            if delay_segundos_entre_uploads > 0 and (i + PAGINAS_POR_BLOCO) < len(paginas_logicas):
-                await asyncio.sleep(delay_segundos_entre_uploads)
+
             
     return source_ids, keys_usadas_para_sources

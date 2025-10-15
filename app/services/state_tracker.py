@@ -1,3 +1,4 @@
+#state_tracker.py
 from enum import Enum
 from typing import Dict
 from threading import Lock
@@ -12,6 +13,7 @@ class ProcessingStage(str, Enum):
     FINISHED = "finished"
     ZIPPING = "zipping"
     ERROR = "error"
+    CANCELLED = "Processo cancelado pelo utilizador" 
 
 state_lock = Lock()
 processing_states: Dict[str, str] = {}

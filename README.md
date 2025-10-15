@@ -25,3 +25,6 @@ PROXY_PORT=8080
 
 ```bash
 docker-compose up --build
+
+docker build --no-cache -t bob-fastapi-pdf .
+docker run -d -p 8000:8000 --name bob-app bob-fastapi-pdf

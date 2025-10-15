@@ -34,6 +34,7 @@
     </label>
 
     <button onclick="uploadPDF()">Enviar</button>
+    <button id="cancel-button" class="hidden" style="background-image: linear-gradient(to right, #e53e3e, #c53030); margin-top: 10px;">Cancelar</button>
 
     <div class="progress-container hidden" id="progressSection">
       <h3>Status de Processamento</h3>
@@ -44,6 +45,25 @@
     <div id="downloadContainer" class="hidden">
       <a id="downloadLink" href="#" download></a>
     </div>
+
+    <section id="history-section" style="margin-top: 40px; width: 100%; max-width: 800px;">
+        <h2>Meu Histórico</h2>
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+            <table id="history-table">
+                <thead>
+                    <tr>
+                        <th>Arquivo</th>
+                        <th>Data</th>
+                        <th>Status</th>
+                        <th>Download</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </section>
+    
   </div>
 
   <div id="settings-modal">

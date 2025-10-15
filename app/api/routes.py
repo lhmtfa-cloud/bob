@@ -1,3 +1,5 @@
+# routes.py (CORRIGIDO)
+
 import os
 import tempfile
 import zipfile
@@ -6,8 +8,10 @@ import re
 import uuid
 import asyncio
 import logging
+import math # Importar math para a função ceil
 from pathlib import Path
 from datetime import timedelta
+from app.prompts.chatPDF import pCabecalho
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form, status
 from fastapi.responses import FileResponse
@@ -31,6 +35,8 @@ os.makedirs(storage_dir, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# ... (nenhuma alteração no início do arquivo) ...
 @router.post("/token", response_model=schemas.Token, tags=["Autenticação"])
 async def login_for_access_token(db: Session = Depends(database.get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     user = crud.get_user_by_username(db, username=form_data.username)
@@ -80,7 +86,13 @@ async def start_pdf_processing(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao guardar ficheiro: {str(e)}")
     
-    asyncio.create_task(process_pdf_background(temp_file_path, code, file.filename, db_session_factory=database.SessionLocal))
+    asyncio.create_task(process_pdf_background(
+        temp_file_path, 
+        code, 
+        file.filename, 
+        db_session_factory=database.SessionLocal,
+        user_api_key=current_user.api_key 
+    ))
     return {
         "message": "Processamento iniciado",
         "tracking_code": code,
@@ -133,6 +145,29 @@ async def download_summary_pdf(code: str, db: Session = Depends(database.get_db)
     except Exception as e:
         logger.error(f"Erro ao extrair PDF do ZIP: {e}")
         raise HTTPException(status_code=500, detail="Erro ao processar o ficheiro de download.")
+
+@router.get("/users/me/uploads", response_model=list[schemas.UploadRecord], tags=["Utilizadores"])
+async def read_user_uploads(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    return crud.get_uploads_by_user_id(db, user_id=current_user.id)
+
+
+@router.post("/cancel-processing/{code}", status_code=status.HTTP_200_OK, tags=["Processamento"])
+async def cancel_processing(code: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_active_user)):
+    upload_record = db.query(models.Upload).filter(models.Upload.tracking_code == code, models.Upload.user_id == current_user.id).first()
+    if not upload_record:
+        raise HTTPException(status_code=404, detail="Processo não encontrado ou não pertence a si.")
+    
+    current_status = get_processing_state(code)
+    if current_status not in [ProcessingStage.FINISHED, ProcessingStage.ERROR, None]:
+        set_processing_state(code, ProcessingStage.CANCELLED)
+        crud.update_upload_status(db, tracking_code=code, status=ProcessingStage.CANCELLED.value)
+        return {"message": "Processo de cancelamento iniciado."}
+    else:
+        raise HTTPException(status_code=400, detail="O processo já foi finalizado ou não pôde ser cancelado.")
+
 
 @router.get("/admin/dashboard", response_model=schemas.DashboardData, tags=["Administração"])
 async def get_admin_dashboard(
@@ -209,7 +244,7 @@ async def execute_qa_for_document_direct(doc_id: str, api_key: str | None, proc_
         print(f"[{proc_code}] Erro no QA para o Bloco {chunk_index}: {e}")
         return (chunk_index, "")
         
-async def process_pdf_background(temp_file_path: str, code: str, original_filename: str, db_session_factory):
+async def process_pdf_background(temp_file_path: str, code: str, original_filename: str, db_session_factory, user_api_key: str | None = None):
     generated_pdf_path_original = None
     pdf_marcado_path = str(Path(temp_file_path).with_name(f"{code}_marcado.pdf"))
     zip_file_final_path = os.path.join(storage_dir, f"{code}.zip")
@@ -217,62 +252,86 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
     
     try:
         def update_state(stage: ProcessingStage):
+            if get_processing_state(code) == ProcessingStage.CANCELLED:
+                print(f"[{code}] Cancelamento detectado. Interrompendo a tarefa.")
+                raise InterruptedError("Processo cancelado pelo utilizador.")
             set_processing_state(code, stage)
             crud.update_upload_status(db, tracking_code=code, status=stage.value)
 
         update_state(ProcessingStage.PREPARING)
+
         texto_extraido_completo = limpar.extrair_texto_com_marcacao_de_paginas(temp_file_path)
-        num_paginas_logicas = len([p for p in texto_extraido_completo.split('---') if p.strip()])
+        paginas_logicas = [p for p in texto_extraido_completo.split('---') if p.strip()]
+        num_paginas_logicas = len(paginas_logicas)
+        
         pdf_uploader.gerar_pdf_marcado_com_reportlab(texto_extraido_completo, pdf_marcado_path)
 
         update_state(ProcessingStage.UPLOADING)
+        
         all_source_ids, _keys_used_temp = await pdf_uploader.processar_e_enviar_texto_em_blocos(
-            texto_extraido_completo, code
+            texto_extraido_completo, 
+            code,
+            user_api_key=user_api_key
         )
 
         update_state(ProcessingStage.QA_PROCESSING)
-        contexto_bruto_lista = []
+        
+        contexto_final_lista = []
+        num_blocos_qa = len(all_source_ids)
+        
         if all_source_ids:
-            qa_coroutines = [
-                execute_qa_for_document_direct(doc_id, _keys_used_temp[i], code, i)
-                for i, doc_id in enumerate(all_source_ids)
-            ]
-            resultados_com_indice = await asyncio.gather(*qa_coroutines)
-            resultados_com_indice.sort(key=lambda x: x[0])
-            contexto_bruto_lista = [res[1] for res in resultados_com_indice]
-        
-        partes_finais_contexto = []
-        page_offset = 0
-        pegou_primeiro_cabecalho = False
+            # 1. Extrair o cabeçalho UMA ÚNICA VEZ, usando o primeiro bloco como contexto
+            print("A extrair cabeçalho do documento...")
+            _, cabecalho_str = await question_answering.process_pdf(
+                source_id=all_source_ids[0],
+                num_blocos_qa=num_blocos_qa,
+                chatpdf_api_key=_keys_used_temp[0],
+                prompt_text=pCabecalho
+                
+            )
+            contexto_final_lista.append(cabecalho_str)
+            print("Cabeçalho extraído com sucesso.")
 
-        for resposta_bloco in contexto_bruto_lista:
-            if not resposta_bloco.strip():
-                page_offset += PAGINAS_POR_BLOCO
-                continue
+            # 2. Recriar os blocos de texto para enviar para a função de páginas
+            blocos_de_texto = []
+            for i in range(0, len(paginas_logicas), PAGINAS_POR_BLOCO):
+                bloco = paginas_logicas[i : i + PAGINAS_POR_BLOCO]
+                blocos_de_texto.append("---".join(bloco))
 
-            if not pegou_primeiro_cabecalho:
-                cabecalho_match = re.search(r"(\{[\s\S]*?Tipo do documento:[\s\S]*?\})", resposta_bloco)
-                if cabecalho_match:
-                    partes_finais_contexto.append(cabecalho_match.group(1))
-                    pegou_primeiro_cabecalho = True
+            # --- INÍCIO DO BLOCO DE CÓDIGO MODIFICADO ---
+            # 3. Substituir asyncio.gather por um loop sequencial com delay dinâmico
+
+            # 3.1 Calcular o delay com base no número de blocos
+            num_blocos_qa = len(all_source_ids)
+            # 3.2 Executar as requisições de QA sequencialmente
+            resultados_dos_blocos_paginas = []
+            for i, doc_id in enumerate(all_source_ids):
+                if get_processing_state(code) == ProcessingStage.CANCELLED:
+                    raise InterruptedError("Processo cancelado pelo utilizador.")
+                
+                if i < len(blocos_de_texto):
+                    print(f"[{code}] Processando QA para o bloco {i + 1}/{num_blocos_qa}...")
+                    resultado_bloco = await question_answering.ask_questions(
+                        source_id=doc_id,
+                        num_blocos_qa = num_blocos_qa,
+                        chatpdf_api_key=_keys_used_temp[i],
+                        texto_do_bloco_atual=blocos_de_texto[i]
+                    )
+                    resultados_dos_blocos_paginas.append(resultado_bloco)
+
             
-            paginas_neste_bloco = re.findall(r"(\{[\s\S]*?página:[\s\S]*?\})", resposta_bloco)
-            
-            for bloco_pagina in paginas_neste_bloco:
-                bloco_corrigido = re.sub(
-                    r"(página:\s*)(\d+)",
-                    lambda m: f"{m.group(1)}{int(m.group(2)) + page_offset}",
-                    bloco_pagina, 1
-                )
-                partes_finais_contexto.append(bloco_corrigido)
-            page_offset += PAGINAS_POR_BLOCO
+            contexto_final_lista.extend(resultados_dos_blocos_paginas)
+            # --- FIM DO BLOCO DE CÓDIGO MODIFICADO ---
         
-        contexto_corrigido_e_unido = "\n\n".join(partes_finais_contexto)
+        contexto_corrigido_e_unido = "\n\n".join(contexto_final_lista)
+        
         contexto_filtrado = limpar.filtrar_contexto_por_pagina(contexto_corrigido_e_unido, num_paginas_logicas)
-        contexto_estruturado = limpar.estruturar_dados_finais(contexto_filtrado)
+        
+        dados_estruturados_dict = limpar.estruturar_dados_finais(contexto_filtrado)
         
         update_state(ProcessingStage.SUMMARIZING)
-        structured_summary = await summarizer.generate_summary(contexto_estruturado, code)
+        
+        structured_summary = await summarizer.generate_summary(dados_estruturados_dict, all_source_ids, _keys_used_temp)
         
         update_state(ProcessingStage.GENERATING_PDF)
         pdf_generator = PDFGenerator()
@@ -280,10 +339,10 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         
         update_state(ProcessingStage.ZIPPING)
         with tempfile.TemporaryDirectory() as temp_dir:
+            shutil.copy(temp_file_path, os.path.join(temp_dir, original_filename))            
             shutil.copy(generated_pdf_path_original, os.path.join(temp_dir, "relatorio_resumo.pdf"))
             shutil.copy(pdf_marcado_path, os.path.join(temp_dir, "documento_marcado_ocr.pdf"))
             with open(os.path.join(temp_dir, "resumo_markdown.md"), "w", encoding="utf-8") as f: f.write(structured_summary)
-            with open(os.path.join(temp_dir, "resposta_chatpdf_bruta_ordenada.txt"), "w", encoding="utf-8") as f: f.write("\n\n--- FIM DO BLOCO ---\n\n".join(contexto_bruto_lista))
             with open(os.path.join(temp_dir, "resposta_chatpdf_corrigida.txt"), "w", encoding="utf-8") as f: f.write(contexto_corrigido_e_unido)
             with zipfile.ZipFile(zip_file_final_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for file in Path(temp_dir).iterdir(): zf.write(file, arcname=file.name)

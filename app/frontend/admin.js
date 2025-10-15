@@ -157,16 +157,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const username = document.getElementById('new-username').value;
         const password = document.getElementById('new-password').value;
         const role = document.getElementById('new-user-role').value;
+        const apiKey = document.getElementById('new-api-key').value;
 
         if (!username || !password) {
             alert('Nome de utilizador e palavra-passe são obrigatórios.');
             return;
         }
 
+        const userData = { username, password, role };
+        if (apiKey) {
+            userData.api_key = apiKey;
+        }
+
         fetch('/admin/users', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ username, password, role })
+            body: JSON.stringify(userData)
         })
         .then(response => {
             if (!response.ok) {
@@ -179,6 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
             fetchUsers();
             document.getElementById('new-username').value = '';
             document.getElementById('new-password').value = '';
+            document.getElementById('new-api-key').value = '';
         })
         .catch(err => alert(err.message));
     });

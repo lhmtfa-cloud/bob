@@ -15,7 +15,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = auth.get_password_hash(user.password)
-    db_user = models.User(username=user.username, hashed_password=hashed_password, role=user.role)
+    db_user = models.User(username=user.username, hashed_password=hashed_password, role=user.role, api_key=user.api_key)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -98,3 +98,12 @@ def update_user_password(db: Session, user: models.User, new_password: str):
     user.hashed_password = auth.get_password_hash(new_password)
     db.commit()
     return user
+
+
+def get_uploads_by_user_id(db: Session, user_id: int):
+    return (
+        db.query(models.Upload)
+        .filter(models.Upload.user_id == user_id)
+        .order_by(desc(models.Upload.upload_time))
+        .all()
+    )

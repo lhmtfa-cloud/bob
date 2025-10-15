@@ -11,7 +11,8 @@ const statusMap = {
   generating_pdf: { value: 80, text: "Gerando PDF..." },
   zipping: { value: 90, text: "Compactando arquivos..." },
   finished: { value: 100, text: "Processamento finalizado!" },
-  error: { value: 0, text: "Erro no processamento." }
+  error: { value: 0, text: "Erro no processamento." },
+  cancelled: { value: 0, text: "Processamento cancelado pelo usuário." }
 };
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (user.role === 'admin' || user.role === 'superuser') {
             document.getElementById('admin-link').style.display = 'inline-block';
         }
+        loadUserHistory(); // Carrega o histórico do usuário
     })
     .catch((error) => {
         console.error(error.message);
@@ -66,7 +68,76 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     setupSettingsModal();
+
+    // Event listener para o botão de cancelar
+    document.getElementById('cancel-button').addEventListener('click', async () => {
+        if (!trackingCode) return;
+        
+        const btn = document.getElementById('cancel-button');
+        btn.disabled = true;
+        btn.textContent = 'Cancelando...';
+
+        const token = localStorage.getItem('accessToken');
+        try {
+            await fetch(`/cancel-processing/${trackingCode}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            // O loop de status (checkStatusLoop) irá atualizar a UI para o estado 'cancelled'
+        } catch (error) {
+            console.error('Erro ao cancelar:', error);
+            showModal("Não foi possível cancelar o processo.");
+            btn.disabled = false;
+            btn.textContent = 'Cancelar';
+        }
+    });
+
+    // Event listener para a tabela de histórico (usando delegação de eventos)
+    document.getElementById('history-table').addEventListener('click', function(e) {
+        if (e.target.classList.contains('download-link')) {
+            e.preventDefault();
+            const code = e.target.dataset.code;
+            const downloadUrl = (currentUserRole === 'admin' || currentUserRole === 'superuser') ? `/download/zip/${code}` : `/download/pdf/${code}`;
+            const filename = (currentUserRole === 'admin' || currentUserRole === 'superuser') ? `processado_${code}.zip` : `resumo_${code}.pdf`;
+            handleAuthenticatedDownload(downloadUrl, filename);
+        }
+    });
 });
+
+function loadUserHistory() {
+    const token = localStorage.getItem('accessToken');
+    fetch('/users/me/uploads', {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(response => response.ok ? response.json() : Promise.reject('Failed to load history'))
+    .then(uploads => {
+        const tbody = document.querySelector('#history-table tbody');
+        tbody.innerHTML = '';
+        if (uploads.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum histórico encontrado.</td></tr>';
+            return;
+        }
+
+        uploads.forEach(upload => {
+            const row = tbody.insertRow();
+            const downloadBtn = upload.status === 'finished'
+                ? `<a href="#" class="download-link" data-code="${upload.tracking_code}">Baixar</a>`
+                : 'N/A';
+
+            row.innerHTML = `
+                <td>${upload.original_filename}</td>
+                <td>${new Date(upload.upload_time).toLocaleString('pt-BR')}</td>
+                <td>${upload.status}</td>
+                <td>${downloadBtn}</td>
+            `;
+        });
+    })
+    .catch(error => {
+        console.error('Erro ao carregar histórico:', error);
+        const tbody = document.querySelector('#history-table tbody');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Erro ao carregar o histórico.</td></tr>';
+    });
+}
 
 function setupSettingsModal() {
     const modal = document.getElementById('settings-modal');
@@ -192,6 +263,7 @@ async function uploadPDF() {
   formData.append("file", pdfInput.files[0]);
 
   document.getElementById("progressSection").classList.remove("hidden");
+  document.getElementById("cancel-button").classList.remove("hidden");
   document.getElementById("downloadContainer").classList.add("hidden");
   document.getElementById("statusText").textContent = "Enviando...";
   document.getElementById("progressBar").value = 5;
@@ -208,11 +280,12 @@ async function uploadPDF() {
     }
     const data = await response.json();
     trackingCode = data.tracking_code;
-
+    loadUserHistory(); // Atualiza o histórico com o novo item "em processamento"
     checkStatusLoop(trackingCode);
   } catch (error) {
     console.error('Erro ao enviar o PDF:', error);
     document.getElementById("statusText").textContent = "Erro ao enviar o arquivo.";
+    document.getElementById("cancel-button").classList.add("hidden");
     showModal(`Erro ao enviar o arquivo: ${error.message}`);
     clearInterval(statusInterval);
   }
@@ -236,39 +309,45 @@ function checkStatusLoop(code) {
       document.getElementById("statusText").textContent = statusInfo.text;
       document.getElementById("progressBar").value = statusInfo.value;
 
-      if (status === "finished") {
+      if (status === "finished" || status === "error" || status === "cancelled") {
         clearInterval(statusInterval);
-        const downloadLink = document.getElementById("downloadLink");
-        
-        let downloadUrl, downloadFilename, linkText;
+        document.getElementById("cancel-button").classList.add("hidden");
+        document.getElementById('cancel-button').disabled = false;
+        document.getElementById('cancel-button').textContent = 'Cancelar';
 
-        if (currentUserRole === 'admin' || currentUserRole === 'superuser') {
-            downloadUrl = `/download/zip/${code}`;
-            downloadFilename = `processado_${code}.zip`;
-            linkText = '📦 Baixe o ZIP';
-        } else {
-            downloadUrl = `/download/pdf/${code}`;
-            downloadFilename = `resumo_${code}.pdf`;
-            linkText = '📄 Baixe o PDF';
+        if (status === "finished") {
+            const downloadLink = document.getElementById("downloadLink");
+            
+            let downloadUrl, downloadFilename, linkText;
+
+            if (currentUserRole === 'admin' || currentUserRole === 'superuser') {
+                downloadUrl = `/download/zip/${code}`;
+                downloadFilename = `processado_${code}.zip`;
+                linkText = '📦 Baixe o ZIP';
+            } else {
+                downloadUrl = `/download/pdf/${code}`;
+                downloadFilename = `resumo_${code}.pdf`;
+                linkText = '📄 Baixe o PDF';
+            }
+
+            downloadLink.textContent = linkText;
+            downloadLink.removeAttribute('href');
+            
+            const newDownloadLink = downloadLink.cloneNode(true);
+            downloadLink.parentNode.replaceChild(newDownloadLink, downloadLink);
+
+            newDownloadLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                handleAuthenticatedDownload(downloadUrl, downloadFilename);
+            });
+
+            document.getElementById("downloadContainer").classList.remove("hidden");
         }
-
-        downloadLink.textContent = linkText;
-        downloadLink.removeAttribute('href');
         
-        const newDownloadLink = downloadLink.cloneNode(true);
-        downloadLink.parentNode.replaceChild(newDownloadLink, downloadLink);
-
-        newDownloadLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            handleAuthenticatedDownload(downloadUrl, downloadFilename);
-        });
-
-        document.getElementById("downloadContainer").classList.remove("hidden");
-      }
-
-      if (status === "error") {
-        clearInterval(statusInterval);
-        showModal("Ocorreu um erro durante o processamento do arquivo.");
+        if (status === "error") {
+            showModal("Ocorreu um erro durante o processamento do arquivo.");
+        }
+        loadUserHistory(); // Atualiza o histórico com o status final
       }
     } catch(error) {
       console.error('Erro ao consultar status:', error);

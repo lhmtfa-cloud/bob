@@ -1,3 +1,5 @@
+#chatpdf_client.py
+
 import httpx
 import os
 from pathlib import Path
@@ -74,6 +76,14 @@ async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retri
         if last_exception: # If all retries failed
             raise last_exception
 
-async def process_pdf(source_id: str, chatpdf_api_key: str, prompt_text: str, file_path: Path = None):
+async def process_pdf(source_id: str, num_blocos_qa, chatpdf_api_key: str, prompt_text: str, file_path: Path = None):
+    
+    delay_segundos_qa = 0  # Delay base
+    if num_blocos_qa >= 5:
+        additional_delay = min(5, (num_blocos_qa - 4) * 1)
+        delay_segundos_qa += additional_delay
+
     summary = await ask_chatpdf(source_id, prompt_text, chatpdf_api_key)
+    await asyncio.sleep(delay_segundos_qa)
+
     return source_id, summary

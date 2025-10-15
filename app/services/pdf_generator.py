@@ -89,37 +89,36 @@ class PDFGenerator:
         canvas.restoreState()
 
     def _prepare_data_for_table(self, markdown_text: str, styles: dict) -> list:
-        """
-        Processa o markdown e cria a estrutura de dados para a tabela.
-        Para itens longos, cria múltiplas linhas.
-        """
-        processed_data = []
-        long_text_keys = ["tipo do documento", "leis", "assinaturas", "resumo", "cronologia"]
+            processed_data = []
+            markdown_rows = [line for line in markdown_text.splitlines() if line.startswith('|') and not line.startswith('|--')]
 
-        markdown_rows = [line for line in markdown_text.splitlines() if line.startswith('|') and not line.startswith('|--')]
+            for row_str in markdown_rows:
+                # Esta linha agora vai funcionar porque o separador não confunde mais o split
+                parts = [p.strip() for p in row_str.strip('|').split('|')]
+                if len(parts) != 2:
+                    continue
+                
+                key, value = parts
+                key_paragraph = Paragraph(key, styles['key_style'])
 
-        for row_str in markdown_rows:
-            parts = [p.strip() for p in row_str.strip('|').split('|')]
-            if len(parts) != 2:
-                continue
-            
-            key, value = parts
-            
-            key_paragraph = Paragraph(key, styles['key_style'])
-            
-            value_with_newlines = re.sub(r'(\(Página\s+\d+\)),\s*', r'\1\n', value)
-            lines = value_with_newlines.split('\n')
-            
-            if lines:
-                first_line_paragraph = Paragraph(lines[0].strip(), styles['value_style'])
-                processed_data.append([key_paragraph, first_line_paragraph])
-            
-            for line in lines[1:]:
-                if line.strip():
-                    line_paragraph = Paragraph(line.strip(), styles['value_style'])
-                    processed_data.append(['', line_paragraph])
+                # --- LÓGICA DE QUEBRA DE LINHA CORRIGIDA COM O NOVO SEPARADOR ---
+                if '_#_BREAK_#_' in value:
+                    lines = value.split('_#_BREAK_#_')
+                else:
+                    value_with_newlines = re.sub(r'(\(Página\s+\d+\)),\s*', r'\1\n', value)
+                    lines = value_with_newlines.split('\n')
+                
+                if lines:
+                    first_line_paragraph = Paragraph(lines[0].strip(), styles['value_style'])
+                    processed_data.append([key_paragraph, first_line_paragraph])
+                
+                for line in lines[1:]:
+                    if line.strip():
+                        line_paragraph = Paragraph(line.strip(), styles['value_style'])
+                        processed_data.append(['', line_paragraph])
 
-        return processed_data
+            return processed_data
+
 
     async def create_summary_pdf(self, structured_summary: str) -> str:
         os.makedirs(self.output_dir, exist_ok=True)

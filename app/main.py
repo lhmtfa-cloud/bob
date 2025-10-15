@@ -1,60 +1,89 @@
 import os
-import time
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
 
-from app.api import models, database, auth
+# Importações da sua aplicação
+from app.api import models, database
 from app.api.routes import router
 from app.api.auth import create_superuser_on_startup
 
+# Importação do novo módulo de backup
+from app.services.backup_manager import create_backup, cleanup_old_backups
+
+# Cria as tabelas no banco de dados, se não existirem
 models.Base.metadata.create_all(bind=database.engine)
 
+# Inicializa a aplicação FastAPI e o agendador
 app = FastAPI(title="BobIA PDF Processor")
 scheduler = AsyncIOScheduler()
 
-STORAGE_DIR = "/app/processed_zips"
-RETENTION_DAYS = 30
-
-def cleanup_old_files():
-    print("A executar a limpeza de ficheiros antigos...")
-    now = time.time()
-    cutoff = now - (RETENTION_DAYS * 86400)
-
-    if not os.path.exists(STORAGE_DIR):
-        return
-
-    for filename in os.listdir(STORAGE_DIR):
-        file_path = os.path.join(STORAGE_DIR, filename)
-        if os.path.isfile(file_path):
-            file_mtime = os.path.getmtime(file_path)
-            if file_mtime < cutoff:
-                print(f"A apagar ficheiro antigo: {filename}")
-                os.remove(file_path)
+# --- LÓGICA DE STARTUP E SHUTDOWN ATUALIZADA ---
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
+    """
+    Executa tarefas na inicialização da aplicação.
+    """
+    # Cria o superusuário padrão, se não existir
     create_superuser_on_startup()
-    scheduler.add_job(
-        cleanup_old_files,
-        trigger=IntervalTrigger(days=1),
-        id="cleanup_job",
-        name="Limpeza diária de ficheiros antigos",
-        replace_existing=True,
-    )
-    scheduler.start()
-    print("Agendador de limpeza iniciado, será executado diariamente.")
 
+    # Agenda a tarefa de limpeza de backups antigos para executar diariamente à 01:00
+    scheduler.add_job(
+        cleanup_old_backups,
+        'cron',
+        hour=18,
+        minute=00,
+        id="cleanup_backups_job",
+        name="Limpeza diária de backups antigos",
+        replace_existing=True
+    )
+    
+    # Agenda a tarefa de backup diário para executar diariamente às 02:00
+    scheduler.add_job(
+        create_backup,
+        'cron',
+        hour=17,
+        minute=0,
+        args=['daily'],
+        id="daily_backup_job",
+        name="Backup diário dos dados",
+        replace_existing=True
+    )
+    
+    # Agenda a tarefa de backup semanal para executar todo Domingo às 03:00
+    scheduler.add_job(
+        create_backup,
+        'cron',
+        day_of_week='sun',
+        hour=3,
+        minute=0,
+        args=['weekly'],
+        id="weekly_backup_job",
+        name="Backup semanal dos dados",
+        replace_existing=True
+    )
+
+    # Inicia o agendador
+    scheduler.start()
+    print("Agendador de backup e limpeza iniciado e tarefas agendadas.")
 
 @app.on_event("shutdown")
-def on_shutdown():
+async def on_shutdown():
+    """
+    Executa tarefas no encerramento da aplicação.
+    """
     scheduler.shutdown()
-    print("Agendador de limpeza parado.")
+    print("Agendador parado.")
 
+# --- CONFIGURAÇÃO DAS ROTAS E FICHEIROS ESTÁTICOS (sem alterações) ---
+
+# Define o diretório do frontend para servir os ficheiros estáticos (CSS, JS, etc.)
 frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
 app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+
+# Inclui as rotas da API definidas em app/api/routes.py
 app.include_router(router)
 
 @app.get("/login", response_class=FileResponse, tags=["Frontend"])

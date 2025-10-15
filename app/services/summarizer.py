@@ -1,109 +1,129 @@
-# summarizer.py
+# app/services/summarizer.py (CORRIGIDO E CONSOLIDADO)
 
-import asyncio
 import logging
+import httpx
+import asyncio
 import os
-import re
-from pathlib import Path
-
-from app.prompts.LLM import pergunta3
-from app.services import limpar
 from dotenv import load_dotenv
+from httpx import Proxy
+from app.prompts.narrative import prompt_resumo_narrativo
 
-import tiktoken
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Carrega variáveis de ambiente (se ainda não foram carregadas)
 load_dotenv()
 
-LOCAL_LLM_URL = os.getenv('LOCAL_LLM_URL', 'http://10.11.15.76:1234/v1/chat/completions')
-LLM_REQUEST_TIMEOUT = int(os.getenv('LLM_REQUEST_TIMEOUT', '300'))
+logging.basicConfig(level=logging.INFO, format='%(asctime=s - %(levelname)s - %(message)s')
 
+# --- LÓGICA DO CLIENTE HTTP (antes em chatpdf_client.py) ---
 
-def _extract_metadata(text: str, field: str) -> str:
-    pattern = re.compile(rf"^\s*{re.escape(field)}:\s*(.*)", re.IGNORECASE | re.MULTILINE)
-    match = pattern.search(text)
-    if match:
-        return match.group(1).strip()
-    return "--"
+PROXY_USER = os.getenv('PROXY_USER')
+PROXY_PASS = os.getenv('PROXY_PASS')
+PROXY_HOST = os.getenv('PROXY_HOST')
+PROXY_PORT = os.getenv('PROXY_PORT')
+CHATPDF_MESSAGE_URL = 'https://api.chatpdf.com/v1/chats/message'
 
-def _sort_entries_by_page_number(text: str) -> str:
-    if not text or text == '--':
-        return text
+def build_proxy_url():
+    if PROXY_HOST and PROXY_PORT:
+        if PROXY_USER and PROXY_PASS:
+            return f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+        else:
+            return f"http://{PROXY_HOST}:{PROXY_PORT}"
+    return None
 
-    entries_raw = re.findall(r'.*?\(Página\s+\d+\)', text)
-    if not entries_raw:
-        return text
+async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retries: int = 5, backoff_factor: float = 2):
+    if not chatpdf_api_key or not isinstance(chatpdf_api_key, str):
+        raise ValueError(f"CHATPDF_API_KEY é necessária e deve ser uma string. Recebido: {type(chatpdf_api_key)}")
 
-    entries = [entry.strip().lstrip(',').strip() for entry in entries_raw]
-
-    def get_page_num(entry):
-        match = re.search(r'\(Página\s+(\d+)\)', entry)
-        return int(match.group(1)) if match else float('inf')
-
-    try:
-        sorted_entries = sorted(entries, key=get_page_num)
-        return ", ".join(sorted_entries)
-    except (ValueError, TypeError):
-        return text
-
-async def ask_local_llm(contexto: str, prompt_usuario: str):
-    if not LOCAL_LLM_URL:
-        logging.error("LOCAL_LLM_URL não está configurado.")
-        return None
-
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "model": "local-model",
-        "messages": [
-            {"role": "system", "content": f"Use o seguinte texto para responder à pergunta:\n\n{contexto}"},
-            {"role": "user", "content": prompt_usuario}
-        ],
-        "temperature": 0.1,
-        "max_tokens": 2000
+    headers = {
+        'x-api-key': chatpdf_api_key,
+        'Content-Type': 'application/json'
     }
+    data = {
+        'sourceId': source_id,
+        'messages': [{'role': 'user', 'content': question}]
+    }
+    proxy_url_str = build_proxy_url()
+    transport = httpx.AsyncHTTPTransport(proxy=Proxy(url=proxy_url_str)) if proxy_url_str else None
+    timeout_config = httpx.Timeout(15.0, read=60.0)
+    last_exception = None
 
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=LLM_REQUEST_TIMEOUT) as client:
-            logging.info(f"Enviando requisição para LLM: {LOCAL_LLM_URL}")
-            response = await client.post(LOCAL_LLM_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            reply = response.json()['choices'][0]['message']['content']
-            return reply
-    except Exception as e:
-        logging.error(f'Erro ao comunicar com LLM Local: {e}')
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f'Detalhes: Status {e.response.status_code}, Resposta: {e.response.text}')
-        return None
+    async with httpx.AsyncClient(transport=transport, timeout=timeout_config) as client:
+        for attempt in range(retries):
+            try:
+                response = await client.post(CHATPDF_MESSAGE_URL, headers=headers, json=data)
+                response.raise_for_status()
+                return response.json()['content']
+            except httpx.HTTPStatusError as e:
+                last_exception = e
+                if 500 <= e.response.status_code < 600 and attempt + 1 < retries:
+                    wait_time = backoff_factor * (2 ** attempt)
+                    print(f"ChatPDF request failed with {e.response.status_code}. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+            except httpx.ReadTimeout as e:
+                last_exception = e
+                if attempt + 1 < retries:
+                    wait_time = backoff_factor * (2 ** attempt)
+                    print(f"ChatPDF request timed out. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
+                    await asyncio.sleep(wait_time)
+            except Exception as e:
+                last_exception = e
+                raise
+        if last_exception:
+            raise last_exception
 
-async def generate_summary(extracted_data: str, doc_id: str):
-    if not extracted_data or not extracted_data.strip():
-        return "[ERRO: DADOS EXTRAÍDOS VAZIOS OU INVÁLIDOS]"
+# --- LÓGICA DE GERAÇÃO DE RESUMO ---
 
-    metadata_text, cronologia_text = limpar.dividir_em_antes_e_depois_do_resumo(extracted_data)
+async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys: list):
+    """
+    Gera a tabela markdown final e o resumo narrativo.
+    O nome desta função é mantido como 'generate_summary' para compatibilidade.
+    """
+    if not dados_estruturados:
+        return "[ERRO: DADOS ESTRUTURADOS VAZIOS OU INVÁLIDOS]"
+
+    cabecalho = dados_estruturados.get("cabecalho", {})
+    dados_agregados = dados_estruturados.get("dados_agregados", {})
+    tipo = cabecalho.get("tipo do documento", "--")
     
-    tipo = _extract_metadata(metadata_text, "tipo do documento")
-    leis = _sort_entries_by_page_number(_extract_metadata(metadata_text, "leis"))
-    assinaturas = _sort_entries_by_page_number(_extract_metadata(metadata_text, "quem assinou"))
+    def formatar_para_exibicao(lista_de_itens: list) -> str:
+        if not lista_de_itens: return "--"
+        itens_sem_pagina = [item.split(' (Página')[0].strip() for item in lista_de_itens]
+        return ", ".join(itens_sem_pagina)
+    
+    def formatar_campo_longo_para_pdf(lista_de_itens: list) -> str:
+        if not lista_de_itens: return "--"
+        return "_#_BREAK_#_".join(lista_de_itens)
 
-    cronologia_para_resumo_raw = cronologia_text.replace("resumo da página:", "", 1).strip()
-    if cronologia_para_resumo_raw.endswith("}"):
-        cronologia_para_resumo_raw = cronologia_para_resumo_raw[:-1].strip()
-
-    cronologia_para_resumo = _sort_entries_by_page_number(cronologia_para_resumo_raw)
+    leis = formatar_para_exibicao(dados_agregados.get("leis", []))
+    assinaturas = formatar_para_exibicao(dados_agregados.get("quem assinou", []))
+    orgaos_envolvidos = formatar_para_exibicao(dados_agregados.get("órgãos envolvidos", []))
+    
+    cronologia_list = dados_agregados.get("resumo da página", [])
+    cronologia_para_tabela = formatar_campo_longo_para_pdf(cronologia_list)
+    cronologia_para_prompt = formatar_para_exibicao(cronologia_list)
 
     resumo_narrativo = "[Nenhum resumo pôde ser gerado.]"
-    if cronologia_para_resumo:
-        resumo_narrativo = await ask_local_llm(cronologia_para_resumo, pergunta3)
-        if not resumo_narrativo:
-            resumo_narrativo = "[Falha ao gerar o resumo narrativo pelo LLM.]"
+    if cronologia_list and source_ids and api_keys:
+        prompt_final = prompt_resumo_narrativo.format(cronologia=cronologia_para_prompt)
+        try:
+            # --- PONTO DA CORREÇÃO ---
+            # Usamos source_ids[0] e api_keys[0] para garantir que estamos passando
+            # uma string para a chave de API, e não a lista inteira.
+            resumo_narrativo = await ask_chatpdf(source_ids[0], prompt_final, api_keys[0])
+            if not resumo_narrativo:
+                resumo_narrativo = "[Falha ao gerar o resumo narrativo pelo ChatPDF.]"
+        except Exception as e:
+            logging.error(f"Erro ao chamar ask_chatpdf para resumo narrativo: {e}")
+            resumo_narrativo = f"[ERRO ao gerar resumo: {e}]"
 
     markdown_final = f"""| item | detalhes |
 |---|---|
 | tipo do documento | {tipo} |
 | Leis | {leis} |
 | Assinaturas | {assinaturas} |
-| Resumo | {resumo_narrativo} |
-| Cronologia | {cronologia_para_resumo} |"""
+| órgãos envolvidos | {orgaos_envolvidos} |
+| Resumo | {resumo_narrativo.replace('|', '\|')} |
+| Cronologia | {cronologia_para_tabela} |"""
     
     return markdown_final
