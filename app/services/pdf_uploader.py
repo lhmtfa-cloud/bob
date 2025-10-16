@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # --- CONSTANTE GLOBAL PARA TAMANHO DO BLOCO ---
-PAGINAS_POR_BLOCO = 5
+PAGINAS_POR_BLOCO = 10
 
 # --- Configuração de Fontes ---
 try:
@@ -83,7 +83,7 @@ PROXY_PASS = os.getenv('PROXY_PASS')
 PROXY_HOST = os.getenv('PROXY_HOST')
 PROXY_PORT = os.getenv('PROXY_PORT')
 CHATPDF_UPLOAD_URL = 'https://api.chatpdf.com/v1/sources/add-file'
-REQUESTS_TIMEOUT = 30
+REQUESTS_TIMEOUT = 15
 proxies = None
 if PROXY_HOST and PROXY_PORT:
     proxy_url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}" if PROXY_USER and PROXY_PASS else f"http://{PROXY_HOST}:{PROXY_PORT}"
@@ -141,8 +141,6 @@ def upload_pdf_file_sync(path_to_file_str: str, user_api_key: str | None = None)
     
     logger.error(f"❌ Todas as tentativas de upload para {path_to_file.name} falharam.")
     return None, None
-
-# --- FUNÇÃO MODIFICADA ---
 async def processar_e_enviar_texto_em_blocos(
     texto_completo: str, 
     codigo_processamento: str,
@@ -152,8 +150,11 @@ async def processar_e_enviar_texto_em_blocos(
     Divide o texto, gera PDFs e faz o upload, agora com delay dinâmico e
     suporte para chave de API do usuário.
     """
-    paginas_logicas = texto_completo.split('---')
-    paginas_logicas = [p for p in paginas_logicas if p.strip()]
+    paginas_logicas_brutas = texto_completo.split('---')
+    paginas_logicas = [p for p in paginas_logicas_brutas if p.strip()]
+
+    # --- LINHA DE LOG ADICIONADA ---
+    logger.info(f"[{codigo_processamento}] Texto extraído resultou em {len(paginas_logicas)} páginas com conteúdo (de um total de {len(paginas_logicas_brutas)} páginas brutas).")
 
     if not paginas_logicas:
         logger.warning("Nenhuma página lógica encontrada no texto extraído.")

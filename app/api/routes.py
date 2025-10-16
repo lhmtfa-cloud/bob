@@ -244,6 +244,7 @@ async def execute_qa_for_document_direct(doc_id: str, api_key: str | None, proc_
         print(f"[{proc_code}] Erro no QA para o Bloco {chunk_index}: {e}")
         return (chunk_index, "")
         
+     
 async def process_pdf_background(temp_file_path: str, code: str, original_filename: str, db_session_factory, user_api_key: str | None = None):
     generated_pdf_path_original = None
     pdf_marcado_path = str(Path(temp_file_path).with_name(f"{code}_marcado.pdf"))
@@ -263,6 +264,7 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         texto_extraido_completo = limpar.extrair_texto_com_marcacao_de_paginas(temp_file_path)
         paginas_logicas = [p for p in texto_extraido_completo.split('---') if p.strip()]
         num_paginas_logicas = len(paginas_logicas)
+        logger.info(f"[{code}] Documento original resultou em {num_paginas_logicas} páginas lógicas com conteúdo.")
         
         pdf_uploader.gerar_pdf_marcado_com_reportlab(texto_extraido_completo, pdf_marcado_path)
 
@@ -299,27 +301,59 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
                 blocos_de_texto.append("---".join(bloco))
 
             # --- INÍCIO DO BLOCO DE CÓDIGO MODIFICADO ---
-            # 3. Substituir asyncio.gather por um loop sequencial com delay dinâmico
+            # 3. Implementar lógica de pausa e retentativa
+            
+            # Constantes para a nova lógica de controle
+            REQUEST_THRESHOLD = 10  # Número de blocos antes da primeira pausa longa
+            LONG_PAUSE_DURATION = 30 # Duração da pausa em segundos
+            MAX_RETRIES_AFTER_PAUSE = 4 # Máximo de tentativas para um bloco após falha
 
-            # 3.1 Calcular o delay com base no número de blocos
-            num_blocos_qa = len(all_source_ids)
-            # 3.2 Executar as requisições de QA sequencialmente
+            requests_since_last_pause = 0
             resultados_dos_blocos_paginas = []
+
             for i, doc_id in enumerate(all_source_ids):
                 if get_processing_state(code) == ProcessingStage.CANCELLED:
                     raise InterruptedError("Processo cancelado pelo utilizador.")
-                
-                if i < len(blocos_de_texto):
-                    print(f"[{code}] Processando QA para o bloco {i + 1}/{num_blocos_qa}...")
-                    resultado_bloco = await question_answering.ask_questions(
-                        source_id=doc_id,
-                        num_blocos_qa = num_blocos_qa,
-                        chatpdf_api_key=_keys_used_temp[i],
-                        texto_do_bloco_atual=blocos_de_texto[i]
-                    )
-                    resultados_dos_blocos_paginas.append(resultado_bloco)
 
-            
+                # Verifica se atingiu o limiar de requisições para fazer uma pausa
+                if requests_since_last_pause >= REQUEST_THRESHOLD:
+                    logger.info(f"[{code}] Limiar de {REQUEST_THRESHOLD} blocos atingido. Pausando por {LONG_PAUSE_DURATION} segundos.")
+                    await asyncio.sleep(LONG_PAUSE_DURATION)
+                    requests_since_last_pause = 0 # Reseta o contador
+
+                success = False
+                # Loop de retentativas para o bloco atual
+                for attempt in range(MAX_RETRIES_AFTER_PAUSE):
+                    try:
+                        # Garante que ainda temos blocos de texto para processar
+                        if i >= len(blocos_de_texto):
+                            logger.warning(f"[{code}] Tentando processar o bloco de QA {i+1}, mas não há bloco de texto correspondente.")
+                            break 
+
+                        logger.info(f"[{code}] Processando QA para o bloco {i + 1}/{num_blocos_qa} (Tentativa {attempt + 1}/{MAX_RETRIES_AFTER_PAUSE})...")
+                        resultado_bloco = await question_answering.ask_questions(
+                            source_id=doc_id,
+                            num_blocos_qa=num_blocos_qa,
+                            chatpdf_api_key=_keys_used_temp[i],
+                            texto_do_bloco_atual=blocos_de_texto[i]
+                        )
+                        resultados_dos_blocos_paginas.append(resultado_bloco)
+                        success = True
+                        break # Sai do loop de retentativas se for bem-sucedido
+
+                    except Exception as e:
+                        logger.error(f"[{code}] Erro ao processar o bloco {i + 1} na tentativa {attempt + 1}: {e}")
+                        if attempt < MAX_RETRIES_AFTER_PAUSE - 1:
+                            logger.info(f"[{code}] Pausando por {LONG_PAUSE_DURATION}s antes da próxima tentativa.")
+                            await asyncio.sleep(LONG_PAUSE_DURATION)
+                        else:
+                            logger.critical(f"[{code}] Falha definitiva ao processar o bloco {i + 1} após {MAX_RETRIES_AFTER_PAUSE} tentativas.")
+                            # Adiciona uma mensagem de erro ao resultado final para este bloco
+                            resultados_dos_blocos_paginas.append(f"[ERRO PROCESSANDO BLOCO {i+1}: Falha após {MAX_RETRIES_AFTER_PAUSE} tentativas]")
+                
+                if success:
+                    requests_since_last_pause += 1
+
             contexto_final_lista.extend(resultados_dos_blocos_paginas)
             # --- FIM DO BLOCO DE CÓDIGO MODIFICADO ---
         
@@ -359,3 +393,4 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         for p in [temp_file_path, pdf_marcado_path, generated_pdf_path_original]:
             if p and os.path.exists(p): os.remove(p)
         db.close()
+

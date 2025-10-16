@@ -1,4 +1,4 @@
-# app/services/summarizer.py (CORRIGIDO E CONSOLIDADO)
+# app/services/summarizer.py (COM SUMARIZAÇÃO HIERÁRQUICA)
 
 import logging
 import httpx
@@ -6,14 +6,13 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from httpx import Proxy
-from app.prompts.narrative import prompt_resumo_narrativo
 
-# Carrega variáveis de ambiente (se ainda não foram carregadas)
+# Carrega variáveis de ambiente
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime=s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- LÓGICA DO CLIENTE HTTP (antes em chatpdf_client.py) ---
+# --- LÓGICA DO CLIENTE HTTP (inalterada) ---
 
 PROXY_USER = os.getenv('PROXY_USER')
 PROXY_PASS = os.getenv('PROXY_PASS')
@@ -33,14 +32,8 @@ async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retri
     if not chatpdf_api_key or not isinstance(chatpdf_api_key, str):
         raise ValueError(f"CHATPDF_API_KEY é necessária e deve ser uma string. Recebido: {type(chatpdf_api_key)}")
 
-    headers = {
-        'x-api-key': chatpdf_api_key,
-        'Content-Type': 'application/json'
-    }
-    data = {
-        'sourceId': source_id,
-        'messages': [{'role': 'user', 'content': question}]
-    }
+    headers = {'x-api-key': chatpdf_api_key, 'Content-Type': 'application/json'}
+    data = {'sourceId': source_id, 'messages': [{'role': 'user', 'content': question}]}
     proxy_url_str = build_proxy_url()
     transport = httpx.AsyncHTTPTransport(proxy=Proxy(url=proxy_url_str)) if proxy_url_str else None
     timeout_config = httpx.Timeout(15.0, read=60.0)
@@ -56,28 +49,26 @@ async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retri
                 last_exception = e
                 if 500 <= e.response.status_code < 600 and attempt + 1 < retries:
                     wait_time = backoff_factor * (2 ** attempt)
-                    print(f"ChatPDF request failed with {e.response.status_code}. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
+                    logging.warning(f"ChatPDF request failed with {e.response.status_code}. Retrying in {wait_time:.2f}s...")
                     await asyncio.sleep(wait_time)
-                else:
-                    raise
+                else: raise
             except httpx.ReadTimeout as e:
                 last_exception = e
                 if attempt + 1 < retries:
                     wait_time = backoff_factor * (2 ** attempt)
-                    print(f"ChatPDF request timed out. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
+                    logging.warning(f"ChatPDF request timed out. Retrying in {wait_time:.2f}s...")
                     await asyncio.sleep(wait_time)
             except Exception as e:
                 last_exception = e
                 raise
-        if last_exception:
-            raise last_exception
+        if last_exception: raise last_exception
 
-# --- LÓGICA DE GERAÇÃO DE RESUMO ---
+# --- LÓGICA DE GERAÇÃO DE RESUMO (MODIFICADA) ---
 
 async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys: list):
     """
-    Gera a tabela markdown final e o resumo narrativo.
-    O nome desta função é mantido como 'generate_summary' para compatibilidade.
+    Gera a tabela markdown e o resumo narrativo usando uma abordagem hierárquica
+    para evitar sobrecarregar a API com prompts muito longos.
     """
     if not dados_estruturados:
         return "[ERRO: DADOS ESTRUTURADOS VAZIOS OU INVÁLIDOS]"
@@ -86,6 +77,7 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
     dados_agregados = dados_estruturados.get("dados_agregados", {})
     tipo = cabecalho.get("tipo do documento", "--")
     
+    # --- Funções de formatação (inalteradas) ---
     def formatar_para_exibicao(lista_de_itens: list) -> str:
         if not lista_de_itens: return "--"
         itens_sem_pagina = [item.split(' (Página')[0].strip() for item in lista_de_itens]
@@ -101,22 +93,65 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
     
     cronologia_list = dados_agregados.get("resumo da página", [])
     cronologia_para_tabela = formatar_campo_longo_para_pdf(cronologia_list)
-    cronologia_para_prompt = formatar_para_exibicao(cronologia_list)
-
+    
+    # --- NOVA LÓGICA DE SUMARIZAÇÃO HIERÁRQUICA ---
     resumo_narrativo = "[Nenhum resumo pôde ser gerado.]"
     if cronologia_list and source_ids and api_keys:
-        prompt_final = prompt_resumo_narrativo.format(cronologia=cronologia_para_prompt)
         try:
-            # --- PONTO DA CORREÇÃO ---
-            # Usamos source_ids[0] e api_keys[0] para garantir que estamos passando
-            # uma string para a chave de API, e não a lista inteira.
-            resumo_narrativo = await ask_chatpdf(source_ids[0], prompt_final, api_keys[0])
-            if not resumo_narrativo:
-                resumo_narrativo = "[Falha ao gerar o resumo narrativo pelo ChatPDF.]"
+            # ETAPA 1: Dividir a cronologia em blocos menores
+            TAMANHO_DO_BLOCO_CRONOLOGIA = 15  # Ajuste este valor conforme necessário
+            blocos_cronologia = [
+                cronologia_list[i:i + TAMANHO_DO_BLOCO_CRONOLOGIA]
+                for i in range(0, len(cronologia_list), TAMANHO_DO_BLOCO_CRONOLOGIA)
+            ]
+            
+            # ETAPA 2: Gerar resumos intermediários para cada bloco em paralelo
+            prompt_resumo_intermediario = (
+                "Com base na seguinte lista de eventos, crie um resumo conciso em um único parágrafo. "
+                "Eventos: {cronologia_bloco}"
+            )
+            
+            tasks_intermediarias = []
+            for i, bloco in enumerate(blocos_cronologia):
+                # Usa source_ids e api_keys de forma circular para distribuir a carga
+                source_id_usado = source_ids[i % len(source_ids)]
+                api_key_usada = api_keys[i % len(api_keys)]
+                
+                texto_do_bloco = ", ".join(bloco)
+                prompt = prompt_resumo_intermediario.format(cronologia_bloco=texto_do_bloco)
+                tasks_intermediarias.append(ask_chatpdf(source_id_usado, prompt, api_key_usada))
+            
+            logging.info(f"Gerando {len(tasks_intermediarias)} resumos intermediários...")
+            resumos_intermediarios = await asyncio.gather(*tasks_intermediarias, return_exceptions=True)
+            
+            # Filtra resumos que falharam
+            resumos_validos = [res for res in resumos_intermediarios if isinstance(res, str) and res]
+
+            if resumos_validos:
+                # ETAPA 3: Consolidar os resumos intermediários e gerar o resumo final
+                texto_consolidado = "\n".join(resumos_validos)
+                
+                # Usando um prompt similar ao seu 'pergunta3' do arquivo LLM.py
+                prompt_final = (
+                    "Com base nos seguintes parágrafos, que são resumos de partes de um documento, "
+                    "crie um resumo narrativo final e coeso em um único parágrafo. "
+                    "Conecte as ideias para contar a história completa do documento de forma fluida."
+                    "\n--- RESUMOS INTERMEDIÁRIOS ---\n"
+                    f"{texto_consolidado}"
+                )
+                
+                logging.info("Gerando resumo narrativo final...")
+                # Usa o primeiro source_id para o contexto final
+                resumo_narrativo = await ask_chatpdf(source_ids[0], prompt_final, api_keys[0])
+
+            if not resumo_narrativo or "[Falha" in resumo_narrativo:
+                 resumo_narrativo = "[Falha ao gerar o resumo narrativo pelo ChatPDF.]"
+
         except Exception as e:
-            logging.error(f"Erro ao chamar ask_chatpdf para resumo narrativo: {e}")
+            logging.error(f"Erro CRÍTICO durante a sumarização hierárquica: {e}")
             resumo_narrativo = f"[ERRO ao gerar resumo: {e}]"
 
+    # --- Montagem do Markdown Final (inalterado) ---
     markdown_final = f"""| item | detalhes |
 |---|---|
 | tipo do documento | {tipo} |
