@@ -69,11 +69,11 @@ async def get_current_superuser(current_user: models.User = Depends(get_current_
 def create_superuser_on_startup():
     db = database.SessionLocal()
     try:
-        superuser = crud.get_user_by_username(db, "lhmtf")
+        superuser = crud.get_user_by_username(db, "admin")
         if not superuser:
             hashed_password = get_password_hash("rxtzef19")
             superuser_in = models.User(
-                username="lhmtf",
+                username="admin",
                 hashed_password=hashed_password,
                 role=models.Role.superuser,
                 is_active=True

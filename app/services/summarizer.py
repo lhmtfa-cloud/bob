@@ -1,5 +1,3 @@
-# app/services/summarizer.py (COM SUMARIZAÇÃO HIERÁRQUICA)
-
 import logging
 import httpx
 import asyncio
@@ -7,12 +5,9 @@ import os
 from dotenv import load_dotenv
 from httpx import Proxy
 
-# Carrega variáveis de ambiente
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- LÓGICA DO CLIENTE HTTP (inalterada) ---
 
 PROXY_USER = os.getenv('PROXY_USER')
 PROXY_PASS = os.getenv('PROXY_PASS')
@@ -63,13 +58,8 @@ async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retri
                 raise
         if last_exception: raise last_exception
 
-# --- LÓGICA DE GERAÇÃO DE RESUMO (MODIFICADA) ---
 
 async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys: list):
-    """
-    Gera a tabela markdown e o resumo narrativo usando uma abordagem hierárquica
-    para evitar sobrecarregar a API com prompts muito longos.
-    """
     if not dados_estruturados:
         return "[ERRO: DADOS ESTRUTURADOS VAZIOS OU INVÁLIDOS]"
 
@@ -77,7 +67,6 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
     dados_agregados = dados_estruturados.get("dados_agregados", {})
     tipo = cabecalho.get("tipo do documento", "--")
     
-    # --- Funções de formatação (inalteradas) ---
     def formatar_para_exibicao(lista_de_itens: list) -> str:
         if not lista_de_itens: return "--"
         itens_sem_pagina = [item.split(' (Página')[0].strip() for item in lista_de_itens]
@@ -94,18 +83,15 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
     cronologia_list = dados_agregados.get("resumo da página", [])
     cronologia_para_tabela = formatar_campo_longo_para_pdf(cronologia_list)
     
-    # --- NOVA LÓGICA DE SUMARIZAÇÃO HIERÁRQUICA ---
     resumo_narrativo = "[Nenhum resumo pôde ser gerado.]"
     if cronologia_list and source_ids and api_keys:
         try:
-            # ETAPA 1: Dividir a cronologia em blocos menores
-            TAMANHO_DO_BLOCO_CRONOLOGIA = 15  # Ajuste este valor conforme necessário
+            TAMANHO_DO_BLOCO_CRONOLOGIA = 15 
             blocos_cronologia = [
                 cronologia_list[i:i + TAMANHO_DO_BLOCO_CRONOLOGIA]
                 for i in range(0, len(cronologia_list), TAMANHO_DO_BLOCO_CRONOLOGIA)
             ]
             
-            # ETAPA 2: Gerar resumos intermediários para cada bloco em paralelo
             prompt_resumo_intermediario = (
                 "Com base na seguinte lista de eventos, crie um resumo conciso em um único parágrafo. "
                 "Eventos: {cronologia_bloco}"
@@ -113,7 +99,6 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
             
             tasks_intermediarias = []
             for i, bloco in enumerate(blocos_cronologia):
-                # Usa source_ids e api_keys de forma circular para distribuir a carga
                 source_id_usado = source_ids[i % len(source_ids)]
                 api_key_usada = api_keys[i % len(api_keys)]
                 
@@ -124,14 +109,11 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
             logging.info(f"Gerando {len(tasks_intermediarias)} resumos intermediários...")
             resumos_intermediarios = await asyncio.gather(*tasks_intermediarias, return_exceptions=True)
             
-            # Filtra resumos que falharam
             resumos_validos = [res for res in resumos_intermediarios if isinstance(res, str) and res]
 
             if resumos_validos:
-                # ETAPA 3: Consolidar os resumos intermediários e gerar o resumo final
                 texto_consolidado = "\n".join(resumos_validos)
                 
-                # Usando um prompt similar ao seu 'pergunta3' do arquivo LLM.py
                 prompt_final = (
                     "Com base nos seguintes parágrafos, que são resumos de partes de um documento, "
                     "crie um resumo narrativo final e coeso em um único parágrafo. "
@@ -141,7 +123,6 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
                 )
                 
                 logging.info("Gerando resumo narrativo final...")
-                # Usa o primeiro source_id para o contexto final
                 resumo_narrativo = await ask_chatpdf(source_ids[0], prompt_final, api_keys[0])
 
             if not resumo_narrativo or "[Falha" in resumo_narrativo:
@@ -151,7 +132,6 @@ async def generate_summary(dados_estruturados: dict, source_ids: list, api_keys:
             logging.error(f"Erro CRÍTICO durante a sumarização hierárquica: {e}")
             resumo_narrativo = f"[ERRO ao gerar resumo: {e}]"
 
-    # --- Montagem do Markdown Final (inalterado) ---
     markdown_final = f"""| item | detalhes |
 |---|---|
 | tipo do documento | {tipo} |

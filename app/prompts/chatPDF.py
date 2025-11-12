@@ -18,7 +18,6 @@ resumo da página: [Descreva a principal ação ou informação desta página em
 }}
 """
 
-# Este prompt simplificado serve para pegar apenas os metadados do documento inteiro.
 pCabecalho = """
 Sua tarefa é analisar o documento de texto fornecido e inferir as seguintes informações gerais do conteúdo, ignorando os detalhes de cada página. Apresente o resultado no seguinte formato:
 {{

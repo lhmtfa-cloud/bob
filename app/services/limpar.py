@@ -1,5 +1,3 @@
-# app/services/limpar.py
-
 import re
 import fitz
 import logging
@@ -36,9 +34,7 @@ def filtrar_contexto_por_pagina(contexto_str: str, max_paginas: int) -> str:
     return "\n\n".join(blocos_validos)
 
 def estruturar_dados_finais(contexto_corrigido_e_filtrado: str) -> dict:
-    """
-    VERSÃO FINAL CORRIGIDA - Expressão Regular consertada para lidar com acentos.
-    """
+
     if not contexto_corrigido_e_filtrado:
         return {}
 
@@ -69,18 +65,13 @@ def estruturar_dados_finais(contexto_corrigido_e_filtrado: str) -> dict:
 
             val_bruto = match.group(1)
             
-            # --- INÍCIO DA LÓGICA DE LIMPEZA APRIMORADA ---
-            # 1. Remove espaços em branco e vírgulas das pontas.
             val_limpo = val_bruto.strip().strip(',').strip()
             
-            # 2. Remove iterativamente pares de colchetes ou aspas que envolvem a string.
-            #    Isso transforma '["Sun Tzu"]' em '"Sun Tzu"' e depois em 'Sun Tzu'.
             while len(val_limpo) > 1 and (
                 (val_limpo.startswith('[') and val_limpo.endswith(']')) or
                 (val_limpo.startswith('"') and val_limpo.endswith('"'))
             ):
                 val_limpo = val_limpo[1:-1].strip()
-            # --- FIM DA LÓGICA DE LIMPEZA APRIMORADA ---
 
             check_val = val_limpo.lower()
             for p in placeholders_to_skip:

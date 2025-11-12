@@ -1,5 +1,3 @@
-# app/services/question_answering.py
-
 import re
 import asyncio
 from app.services.chatpdf_client import process_pdf 
@@ -12,10 +10,7 @@ async def ask_questions(
     texto_do_bloco_atual: str,
     num_blocos_qa: int
 ):
-    """
-    VERSÃO SIMPLIFICADA: Processa um bloco de texto e extrai dados APENAS das páginas,
-    sem extrair o cabeçalho.
-    """
+
     print(f"Iniciando processamento de PÁGINAS para o source_id: {source_id}")
 
     paginas_do_bloco = texto_do_bloco_atual.split('---')
@@ -59,5 +54,4 @@ async def ask_questions(
     
     print("Processamento de todas as páginas do bloco concluído.")
     
-    # Retorna APENAS os resultados das páginas
     return "\n\n".join(respostas_das_paginas)

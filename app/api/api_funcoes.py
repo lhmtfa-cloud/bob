@@ -4,8 +4,8 @@ import zipfile
 import shutil
 import re
 import asyncio
-import time  # Import the time module
-import traceback # Import traceback for detailed error logging
+import time 
+import traceback 
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -40,9 +40,8 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
     zip_file_final_path = os.path.join(storage_dir, f"{code}.zip")
     db = db_session_factory()
     
-    start_time = time.time()  # Start the timer
-    error_logs = []  # List to store error logs
-
+    start_time = time.time()  
+    error_logs = []  
     try:
         def update_state(stage: ProcessingStage):
             set_processing_state(code, stage)
@@ -113,12 +112,10 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
             with open(os.path.join(temp_dir, "resumo_markdown.md"), "w", encoding="utf-8") as f: f.write(structured_summary)
             with open(os.path.join(temp_dir, "resposta_chatpdf_bruta_ordenada.txt"), "w", encoding="utf-8") as f: f.write("\n\n--- FIM DO BLOCO ---\n\n".join(contexto_bruto_lista))
             with open(os.path.join(temp_dir, "resposta_chatpdf_corrigida.txt"), "w", encoding="utf-8") as f: f.write(contexto_corrigido_e_unido)
-            
-            # Calculate processing time
+           
             end_time = time.time()
             duration = end_time - start_time
             
-            # Create processing_details.txt
             details_file_path = os.path.join(temp_dir, "processing_details.txt")
             with open(details_file_path, "w", encoding="utf-8") as f:
                 f.write(f"Tempo de processamento: {duration:.2f} segundos\n")
@@ -135,7 +132,7 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
 
     except Exception as e:
         print(f"ERRO CRÍTICO NO PROCESSAMENTO: {e}")
-        error_logs.append(f"Erro: {e}\n{traceback.format_exc()}") # Capture detailed error
+        error_logs.append(f"Erro: {e}\n{traceback.format_exc()}") 
         update_state(ProcessingStage.ERROR)
         import traceback
         traceback.print_exc()

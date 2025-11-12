@@ -7,9 +7,6 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="video-container">
-    <img src="/static/meu_gif.gif" alt="Plano de fundo animado" id="backgroundGif">
-  </div>
 
   <div class="container" style="max-width: 450px;">
     <h1>Login BobIA</h1>
@@ -28,7 +25,7 @@
   </div>
   
   <footer>
-    <p>Feito por Henrique e Rafael @ SETI/PR</p>
+    <p>Feito por Rafael </p>
   </footer>
 
   <script>
@@ -37,20 +34,17 @@
       const username = e.target.username.value;
       const password = e.target.password.value;
       const errorMessage = document.getElementById('error-message');
-      
-      // --- INÍCIO DA CORREÇÃO DO ERRO "METHOD NOT ALLOWED" ---
-      // Em vez de FormData, usamos URLSearchParams para enviar os dados no formato correto.
+  
       const details = {
           'username': username,
           'password': password
       };
       const formBody = Object.keys(details).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(details[key])).join('&');
-      // --- FIM DA CORREÇÃO ---
+
 
       try {
         const response = await fetch('/token', {
           method: 'POST',
-          // ATUALIZADO: Define o cabeçalho e o corpo da requisição corretamente
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
           },
@@ -59,13 +53,11 @@
 
         if (!response.ok) {
           const errorData = await response.json();
-          // Exibe a mensagem de erro específica retornada pela API
           throw new Error(errorData.detail || 'Falha no login');
         }
 
         const data = await response.json();
         localStorage.setItem('accessToken', data.access_token);
-        // ATUALIZADO: Redireciona para a URL limpa da página principal
         window.location.href = '/app';
 
       } catch (error) {

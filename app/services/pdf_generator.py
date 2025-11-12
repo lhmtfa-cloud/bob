@@ -1,4 +1,3 @@
-# pdf_generator.py
 
 import re
 import os
@@ -7,7 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.lib.units import mm, cm  # Adicionado cm para o tamanho da logo
+from reportlab.lib.units import mm, cm  
 from reportlab.lib.enums import TA_LEFT
 import os
 import uuid
@@ -19,10 +18,8 @@ from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-# Adicionado para a logo
 from reportlab.lib.utils import ImageReader
 
-# --- Bloco de registro de fontes (inalterado) ---
 try:
     arial_path = 'arial.ttf' 
     arial_bold_path = 'arialbd.ttf'
@@ -93,7 +90,6 @@ class PDFGenerator:
             markdown_rows = [line for line in markdown_text.splitlines() if line.startswith('|') and not line.startswith('|--')]
 
             for row_str in markdown_rows:
-                # Esta linha agora vai funcionar porque o separador não confunde mais o split
                 parts = [p.strip() for p in row_str.strip('|').split('|')]
                 if len(parts) != 2:
                     continue
@@ -101,7 +97,6 @@ class PDFGenerator:
                 key, value = parts
                 key_paragraph = Paragraph(key, styles['key_style'])
 
-                # --- LÓGICA DE QUEBRA DE LINHA CORRIGIDA COM O NOVO SEPARADOR ---
                 if '_#_BREAK_#_' in value:
                     lines = value.split('_#_BREAK_#_')
                 else:
@@ -127,9 +122,8 @@ class PDFGenerator:
         
         doc = SimpleDocTemplate(caminho_pdf, pagesize=A4,
                                 leftMargin=20*mm, rightMargin=20*mm,
-                                topMargin=30*mm, bottomMargin=20*mm) # Margem superior maior para a logo
+                                topMargin=30*mm, bottomMargin=20*mm) 
         
-        # --- Estilos ---
         styles = {}
         base_style = getSampleStyleSheet()['Normal']
         base_style.fontName = FONT_FAMILY
@@ -142,7 +136,6 @@ class PDFGenerator:
         try:
             prepared_data = self._prepare_data_for_table(structured_summary, styles)
             if not prepared_data:
-                # Ainda assim constrói o doc com o header, caso o arquivo esteja vazio
                 doc.build([], onFirstPage=self._add_page_header, onLaterPages=self._add_page_header)
                 return caminho_pdf
 

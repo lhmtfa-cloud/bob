@@ -1,6 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   --bg-color: #f0f2f5;
-  --container-bg: rgba(255, 255, 255, 0.9);
+  --container-bg: var(--section-bg);
   --text-color: #333;
   --header-color: #1a202c;
   --border-color: #e2e8f0;
@@ -10,13 +12,13 @@
   --footer-bg: rgba(26, 32, 44, 0.8);
   --footer-text: #e2e8f0;
   --modal-bg: #ffffff;
-  --modal-shadow: rgba(0, 0, 0, 0.1);
+  --modal-shadow: rgba(0, 0, 0, 0.08);
   --section-bg: #ffffff;
 }
 
 body.dark-mode {
   --bg-color: #1a202c;
-  --container-bg: rgba(45, 55, 72, 0.9);
+  --container-bg: var(--section-bg);
   --text-color: #e2e8f0;
   --header-color: #ffffff;
   --border-color: #4a5568;
@@ -26,7 +28,7 @@ body.dark-mode {
   --footer-bg: rgba(10, 15, 25, 0.8);
   --footer-text: #a0aec0;
   --modal-bg: #2d3748;
-  --modal-shadow: rgba(0, 0, 0, 0.4);
+  --modal-shadow: rgba(0, 0, 0, 0.25);
   --section-bg: #2d3748;
 }
 
@@ -44,34 +46,12 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', sans-serif;
   position: relative;
   overflow-x: hidden;
   background-color: var(--bg-color);
   transition: background-color 0.3s ease;
   padding: 20px;
-}
-
-.video-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  z-index: -1;
-}
-
-#backgroundGif {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.5;
-  transition: opacity 0.3s ease;
-}
-
-body.dark-mode #backgroundGif {
-    opacity: 0.2;
 }
 
 .container {
@@ -81,7 +61,7 @@ body.dark-mode #backgroundGif {
   line-height: 1.6;
   position: relative;
   z-index: 1;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -114,7 +94,7 @@ input[type="file"] {
 }
 
 .custom-file-upload {
-  border: 2px dashed var(--input-border);
+  border: 1px solid var(--input-border);
   display: inline-block;
   padding: 12px 25px;
   cursor: pointer;
@@ -131,7 +111,7 @@ input[type="file"] {
 
 .custom-file-upload:hover {
   border-color: #4F46E5;
-  background-color: var(--bg-color);
+  background-color: var(--input-bg);
 }
 
 .custom-file-upload i {
@@ -142,7 +122,7 @@ button {
   display: block;
   margin: 0 auto 20px auto;
   padding: 14px 30px;
-  background-image: linear-gradient(to right, #667eea 0%, #764ba2 51%, #667eea 100%);
+  background-image: linear-gradient(to right, #4F46E5 0%, #7c3aed 51%, #4F46E5 100%);
   background-size: 200% auto;
   color: white;
   border: none;
@@ -151,20 +131,20 @@ button {
   font-size: 1.05em;
   font-weight: 600;
   transition: all 0.4s ease-in-out;
-  box-shadow: 0 4px 15px 0 rgba(116, 79, 168, 0.75);
+  box-shadow: 0 4px 12px 0 rgba(79, 70, 229, 0.4);
   width: 100%;
   max-width: 220px;
 }
 
 button:hover {
   background-position: right center;
-  box-shadow: 0 6px 20px 0 rgba(116, 79, 168, 0.85);
+  box-shadow: 0 6px 15px 0 rgba(79, 70, 229, 0.5);
   transform: translateY(-2px);
 }
 
 button:active {
   transform: translateY(0);
-  box-shadow: 0 4px 15px 0 rgba(116, 79, 168, 0.75);
+  box-shadow: 0 4px 12px 0 rgba(79, 70, 229, 0.4);
 }
 
 footer {
@@ -214,13 +194,13 @@ progress::-webkit-progress-bar {
 }
 
 progress::-webkit-progress-value {
-  background-image: linear-gradient(to right, #667eea, #764ba2);
+  background-image: linear-gradient(to right, #4F46E5, #7c3aed);
   border-radius: 6px;
   transition: width 0.5s ease-in-out;
 }
 
 progress::-moz-progress-bar {
-  background-image: linear-gradient(to right, #667eea, #764ba2);
+  background-image: linear-gradient(to right, #4F46E5, #7c3aed);
   border-radius: 6px;
 }
 
@@ -235,7 +215,8 @@ progress::-moz-progress-bar {
 #downloadLink {
   display: inline-block;
   margin-top: 20px;
-  background-image: linear-gradient(to right, #38a169 0%, #2f855a 51%, #38a169 100%);
+  background-image: none;
+  background-color: #10B981;
   background-size: 200% auto;
   color: white;
   text-decoration: none;
@@ -243,12 +224,13 @@ progress::-moz-progress-bar {
   border-radius: 8px;
   transition: all 0.4s ease-in-out;
   font-weight: 500;
-  box-shadow: 0 4px 15px 0 rgba(47, 133, 90, 0.6);
+  box-shadow: 0 4px 12px 0 rgba(16, 185, 129, 0.4);
 }
 
 #downloadLink:hover {
-  background-position: right center;
-  box-shadow: 0 6px 20px 0 rgba(47, 133, 90, 0.7);
+  background-position: unset;
+  background-color: #059669;
+  box-shadow: 0 6px 15px 0 rgba(16, 185, 129, 0.5);
   transform: translateY(-1px);
 }
 
@@ -355,6 +337,16 @@ progress::-moz-progress-bar {
   color: var(--text-color);
   border-radius: 8px;
   font-size: 1em;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+td select:focus,
+#create-user-form input:focus,
+#create-user-form select:focus {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+  outline: none;
 }
 
 .error-text {
@@ -505,6 +497,9 @@ th {
     background-color: var(--input-bg);
     color: var(--input-text);
     font-weight: 600;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 tbody tr:hover {
@@ -518,6 +513,7 @@ td button, td select {
     cursor: pointer;
     background-color: var(--input-bg);
     color: var(--text-color);
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .delete-btn {

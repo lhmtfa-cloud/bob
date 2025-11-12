@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (user.role === 'admin' || user.role === 'superuser') {
             document.getElementById('admin-link').style.display = 'inline-block';
         }
-        loadUserHistory(); // Carrega o histórico do usuário
+        loadUserHistory(); 
     })
     .catch((error) => {
         console.error(error.message);
@@ -69,7 +69,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     setupSettingsModal();
 
-    // Event listener para o botão de cancelar
     document.getElementById('cancel-button').addEventListener('click', async () => {
         if (!trackingCode) return;
         
@@ -83,7 +82,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            // O loop de status (checkStatusLoop) irá atualizar a UI para o estado 'cancelled'
         } catch (error) {
             console.error('Erro ao cancelar:', error);
             showModal("Não foi possível cancelar o processo.");
@@ -92,7 +90,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Event listener para a tabela de histórico (usando delegação de eventos)
     document.getElementById('history-table').addEventListener('click', function(e) {
         if (e.target.classList.contains('download-link')) {
             e.preventDefault();
@@ -280,7 +277,7 @@ async function uploadPDF() {
     }
     const data = await response.json();
     trackingCode = data.tracking_code;
-    loadUserHistory(); // Atualiza o histórico com o novo item "em processamento"
+    loadUserHistory(); 
     checkStatusLoop(trackingCode);
   } catch (error) {
     console.error('Erro ao enviar o PDF:', error);
@@ -347,7 +344,7 @@ function checkStatusLoop(code) {
         if (status === "error") {
             showModal("Ocorreu um erro durante o processamento do arquivo.");
         }
-        loadUserHistory(); // Atualiza o histórico com o status final
+        loadUserHistory(); 
       }
     } catch(error) {
       console.error('Erro ao consultar status:', error);

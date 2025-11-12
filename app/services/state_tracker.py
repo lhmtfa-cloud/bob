@@ -1,4 +1,3 @@
-#state_tracker.py
 from enum import Enum
 from typing import Dict
 from threading import Lock

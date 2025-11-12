@@ -1,5 +1,3 @@
-# routes.py (CORRIGIDO)
-
 import os
 import tempfile
 import zipfile
@@ -8,17 +6,16 @@ import re
 import uuid
 import asyncio
 import logging
-import math # Importar math para a função ceil
+import math
 from pathlib import Path
 from datetime import timedelta
 from app.prompts.chatPDF import pCabecalho
-
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form, status
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
-
+# ---#
 from app.services import limpar
 from app.services import pdf_uploader
 from app.services import question_answering
@@ -31,12 +28,10 @@ from . import crud, models, schemas, auth, database
 router = APIRouter()
 storage_dir = "/app/processed_zips"
 os.makedirs(storage_dir, exist_ok=True)
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# ... (nenhuma alteração no início do arquivo) ...
 @router.post("/token", response_model=schemas.Token, tags=["Autenticação"])
 async def login_for_access_token(db: Session = Depends(database.get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     user = crud.get_user_by_username(db, username=form_data.username)
@@ -168,7 +163,6 @@ async def cancel_processing(code: str, db: Session = Depends(database.get_db), c
     else:
         raise HTTPException(status_code=400, detail="O processo já foi finalizado ou não pôde ser cancelado.")
 
-
 @router.get("/admin/dashboard", response_model=schemas.DashboardData, tags=["Administração"])
 async def get_admin_dashboard(
     db: Session = Depends(database.get_db),
@@ -243,8 +237,7 @@ async def execute_qa_for_document_direct(doc_id: str, api_key: str | None, proc_
     except Exception as e:
         print(f"[{proc_code}] Erro no QA para o Bloco {chunk_index}: {e}")
         return (chunk_index, "")
-        
-     
+         
 async def process_pdf_background(temp_file_path: str, code: str, original_filename: str, db_session_factory, user_api_key: str | None = None):
     generated_pdf_path_original = None
     pdf_marcado_path = str(Path(temp_file_path).with_name(f"{code}_marcado.pdf"))
@@ -282,7 +275,6 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         num_blocos_qa = len(all_source_ids)
         
         if all_source_ids:
-            # 1. Extrair o cabeçalho UMA ÚNICA VEZ, usando o primeiro bloco como contexto
             print("A extrair cabeçalho do documento...")
             _, cabecalho_str = await question_answering.process_pdf(
                 source_id=all_source_ids[0],
@@ -294,19 +286,14 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
             contexto_final_lista.append(cabecalho_str)
             print("Cabeçalho extraído com sucesso.")
 
-            # 2. Recriar os blocos de texto para enviar para a função de páginas
             blocos_de_texto = []
             for i in range(0, len(paginas_logicas), PAGINAS_POR_BLOCO):
                 bloco = paginas_logicas[i : i + PAGINAS_POR_BLOCO]
                 blocos_de_texto.append("---".join(bloco))
 
-            # --- INÍCIO DO BLOCO DE CÓDIGO MODIFICADO ---
-            # 3. Implementar lógica de pausa e retentativa
-            
-            # Constantes para a nova lógica de controle
-            REQUEST_THRESHOLD = 10  # Número de blocos antes da primeira pausa longa
-            LONG_PAUSE_DURATION = 30 # Duração da pausa em segundos
-            MAX_RETRIES_AFTER_PAUSE = 4 # Máximo de tentativas para um bloco após falha
+            REQUEST_THRESHOLD = 10
+            LONG_PAUSE_DURATION = 30
+            MAX_RETRIES_AFTER_PAUSE = 4
 
             requests_since_last_pause = 0
             resultados_dos_blocos_paginas = []
@@ -315,17 +302,14 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
                 if get_processing_state(code) == ProcessingStage.CANCELLED:
                     raise InterruptedError("Processo cancelado pelo utilizador.")
 
-                # Verifica se atingiu o limiar de requisições para fazer uma pausa
                 if requests_since_last_pause >= REQUEST_THRESHOLD:
                     logger.info(f"[{code}] Limiar de {REQUEST_THRESHOLD} blocos atingido. Pausando por {LONG_PAUSE_DURATION} segundos.")
                     await asyncio.sleep(LONG_PAUSE_DURATION)
-                    requests_since_last_pause = 0 # Reseta o contador
+                    requests_since_last_pause = 0
 
                 success = False
-                # Loop de retentativas para o bloco atual
                 for attempt in range(MAX_RETRIES_AFTER_PAUSE):
                     try:
-                        # Garante que ainda temos blocos de texto para processar
                         if i >= len(blocos_de_texto):
                             logger.warning(f"[{code}] Tentando processar o bloco de QA {i+1}, mas não há bloco de texto correspondente.")
                             break 
@@ -339,7 +323,7 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
                         )
                         resultados_dos_blocos_paginas.append(resultado_bloco)
                         success = True
-                        break # Sai do loop de retentativas se for bem-sucedido
+                        break
 
                     except Exception as e:
                         logger.error(f"[{code}] Erro ao processar o bloco {i + 1} na tentativa {attempt + 1}: {e}")
@@ -348,14 +332,12 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
                             await asyncio.sleep(LONG_PAUSE_DURATION)
                         else:
                             logger.critical(f"[{code}] Falha definitiva ao processar o bloco {i + 1} após {MAX_RETRIES_AFTER_PAUSE} tentativas.")
-                            # Adiciona uma mensagem de erro ao resultado final para este bloco
                             resultados_dos_blocos_paginas.append(f"[ERRO PROCESSANDO BLOCO {i+1}: Falha após {MAX_RETRIES_AFTER_PAUSE} tentativas]")
                 
                 if success:
                     requests_since_last_pause += 1
 
             contexto_final_lista.extend(resultados_dos_blocos_paginas)
-            # --- FIM DO BLOCO DE CÓDIGO MODIFICADO ---
         
         contexto_corrigido_e_unido = "\n\n".join(contexto_final_lista)
         
@@ -393,4 +375,3 @@ async def process_pdf_background(temp_file_path: str, code: str, original_filena
         for p in [temp_file_path, pdf_marcado_path, generated_pdf_path_original]:
             if p and os.path.exists(p): os.remove(p)
         db.close()
-

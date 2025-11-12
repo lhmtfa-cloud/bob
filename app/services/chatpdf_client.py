@@ -1,5 +1,3 @@
-#chatpdf_client.py
-
 import httpx
 import os
 from pathlib import Path
@@ -56,29 +54,27 @@ async def ask_chatpdf(source_id: str, question: str, chatpdf_api_key: str, retri
                 return response.json()['content'] #
             except httpx.HTTPStatusError as e:
                 last_exception = e
-                # Retry only on 5xx server errors
                 if 500 <= e.response.status_code < 600:
                     wait_time = backoff_factor * (2 ** attempt)
                     print(f"ChatPDF request failed with {e.response.status_code}. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
                     await asyncio.sleep(wait_time)
                 else:
-                    # Don't retry for 4xx client errors (e.g., bad request, auth error)
                     raise
-            except httpx.ReadTimeout as e: #
+            except httpx.ReadTimeout as e: 
                 last_exception = e
                 wait_time = backoff_factor * (2 ** attempt)
                 print(f"ChatPDF request timed out. Retrying in {wait_time:.2f} seconds... (Attempt {attempt + 1}/{retries})")
                 await asyncio.sleep(wait_time)
-            except Exception as e: # Generic catch for other network issues perhaps, then re-raise
+            except Exception as e: 
                 last_exception = e
-                raise # Or handle more specifically if needed
+                raise 
 
-        if last_exception: # If all retries failed
+        if last_exception: 
             raise last_exception
 
 async def process_pdf(source_id: str, num_blocos_qa, chatpdf_api_key: str, prompt_text: str, file_path: Path = None):
     
-    delay_segundos_qa = 0  # Delay base
+    delay_segundos_qa = 0 
     if num_blocos_qa >= 5:
         additional_delay = min(5, (num_blocos_qa - 4) * 1)
         delay_segundos_qa += additional_delay

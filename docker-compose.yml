@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.12-slim'
 
 services:
   fastapi-pdf:
@@ -11,12 +11,11 @@ services:
     environment:
       - UPLOAD_DIR=/app/data/uploads
       - SUMMARY_DIR=/app/data/summaries
-      - SECRET_KEY=rafa2802 # Lembre-se de trocar por uma chave mais segura
+      - SECRET_KEY=rafa2802 
       - TZ=America/Sao_Paulo
     volumes:
-      # Todas as pastas importantes agora são LOCAIS e de fácil acesso
       - ./data/uploads:/app/data/uploads
       - ./data/summaries:/app/data/summaries
-      - ./app_data:/app/data                 # <--- BASE DE DADOS VIVA FICA AQUI
-      - ./processed_zips:/app/processed_zips # <--- ZIPS PROCESSADOS FICAM AQUI
-      - ./backups:/app/backups               # <--- BACKUPS .zip FICAM AQUI
+      - ./app_data:/app/data                 
+      - ./processed_zips:/app/processed_zips 
+      - ./backups:/app/backups               

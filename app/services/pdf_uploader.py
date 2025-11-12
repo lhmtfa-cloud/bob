@@ -1,5 +1,3 @@
-# pdf_uploader.py
-
 import os
 import requests
 from pathlib import Path
@@ -9,7 +7,6 @@ import logging
 import tempfile
 import math
 
-# --- Importações da ReportLab ---
 from reportlab.platypus import SimpleDocTemplate, Paragraph, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -19,10 +16,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- CONSTANTE GLOBAL PARA TAMANHO DO BLOCO ---
 PAGINAS_POR_BLOCO = 10
 
-# --- Configuração de Fontes ---
 try:
     arial_path = 'arial.ttf'
     if not os.path.exists(arial_path) and os.name == 'nt':
@@ -40,9 +35,7 @@ except Exception as e:
 
 
 def gerar_pdf_marcado_com_reportlab(texto_completo_extraido: str, pdf_output_path: str):
-    """
-    Cria um PDF de alta fidelidade a partir do texto extraído, usando ReportLab.
-    """
+
     doc = SimpleDocTemplate(pdf_output_path,
                             leftMargin=15*mm, rightMargin=15*mm,
                             topMargin=15*mm, bottomMargin=15*mm)
@@ -89,23 +82,17 @@ if PROXY_HOST and PROXY_PORT:
     proxy_url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}" if PROXY_USER and PROXY_PASS else f"http://{PROXY_HOST}:{PROXY_PORT}"
     proxies = {"http": proxy_url, "https": proxy_url}
 
-# --- FUNÇÃO MODIFICADA ---
 def upload_pdf_file_sync(path_to_file_str: str, user_api_key: str | None = None):
-    """
-    Função de upload modificada para priorizar a chave do usuário e registrar as tentativas.
-    """
+
     path_to_file = Path(path_to_file_str)
     
-    # --- INÍCIO DA LÓGICA DE SELEÇÃO DE CHAVE API ---
     api_keys_to_try = []
-    key_sources = [] # Para ajudar no logging
+    key_sources = [] 
 
-    # 1. Adiciona a chave do usuário como prioridade, se existir
     if user_api_key:
         api_keys_to_try.append(user_api_key)
         key_sources.append("Chave do Usuário")
 
-    # 2. Adiciona as chaves globais, evitando duplicatas
     global_keys = [
         ("Chave Global 1", CHATPDF_API_KEY1),
         ("Chave Global 2", CHATPDF_API_KEY2),
@@ -119,8 +106,7 @@ def upload_pdf_file_sync(path_to_file_str: str, user_api_key: str | None = None)
     if not api_keys_to_try:
         logger.error("Nenhuma chave de API (nem de usuário, nem global) está configurada.")
         return None, None
-    # --- FIM DA LÓGICA DE SELEÇÃO DE CHAVE API ---
-    
+
     for i, key_value in enumerate(api_keys_to_try):
         key_name_for_log = key_sources[i]
         logger.info(f"Tentando upload de '{path_to_file.name}' com a '{key_name_for_log}'...")
@@ -144,16 +130,12 @@ def upload_pdf_file_sync(path_to_file_str: str, user_api_key: str | None = None)
 async def processar_e_enviar_texto_em_blocos(
     texto_completo: str, 
     codigo_processamento: str,
-    user_api_key: str | None = None # Novo parâmetro para a chave do usuário
+    user_api_key: str | None = None 
 ) -> tuple[list[str], list[str | None]]:
-    """
-    Divide o texto, gera PDFs e faz o upload, agora com delay dinâmico e
-    suporte para chave de API do usuário.
-    """
+
     paginas_logicas_brutas = texto_completo.split('---')
     paginas_logicas = [p for p in paginas_logicas_brutas if p.strip()]
 
-    # --- LINHA DE LOG ADICIONADA ---
     logger.info(f"[{codigo_processamento}] Texto extraído resultou em {len(paginas_logicas)} páginas com conteúdo (de um total de {len(paginas_logicas_brutas)} páginas brutas).")
 
     if not paginas_logicas:
@@ -178,7 +160,6 @@ async def processar_e_enviar_texto_em_blocos(
             logger.info(f"Gerando PDF para o bloco {num_part}/{num_blocos}...")
             gerar_pdf_marcado_com_reportlab(texto_do_bloco, caminho_pdf_bloco)
             
-            # Passa a chave do usuário para a função de upload
             source_id, key_usada = upload_pdf_file_sync(caminho_pdf_bloco, user_api_key)
             if source_id:
                 source_ids.append(source_id)
